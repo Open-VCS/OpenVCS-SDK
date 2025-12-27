@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
+use serde::Deserialize;
 use zip::write::FileOptions;
 use zip::CompressionMethod;
 
@@ -97,113 +98,17 @@ fn read_to_string(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))
 }
 
-fn json_extract_string_value(text: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let mut i = text.find(&needle)?;
-    i += needle.len();
-    let bytes = text.as_bytes();
-    while i < text.len() && bytes[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if i >= text.len() || bytes[i] != b':' {
-        return None;
-    }
-    i += 1;
-    while i < text.len() && bytes[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if i >= text.len() || bytes[i] != b'"' {
-        return None;
-    }
-    i += 1;
-
-    let mut out = String::new();
-    let mut esc = false;
-    while i < text.len() {
-        let b = bytes[i];
-        i += 1;
-        if esc {
-            match b {
-                b'"' => out.push('"'),
-                b'\\' => out.push('\\'),
-                b'/' => out.push('/'),
-                b'b' => out.push('\u{0008}'),
-                b'f' => out.push('\u{000C}'),
-                b'n' => out.push('\n'),
-                b'r' => out.push('\r'),
-                b't' => out.push('\t'),
-                _ => return None,
-            }
-            esc = false;
-            continue;
-        }
-        match b {
-            b'\\' => esc = true,
-            b'"' => return Some(out),
-            _ => out.push(b as char),
-        }
-    }
-    None
+#[derive(Debug, Deserialize)]
+struct PluginManifestBackend {
+    #[serde(default)]
+    exec: Option<String>,
 }
 
-fn json_extract_object_slice<'a>(text: &'a str, key: &str) -> Option<&'a str> {
-    let needle = format!("\"{key}\"");
-    let mut i = text.find(&needle)?;
-    i += needle.len();
-    let bytes = text.as_bytes();
-    while i < text.len() && bytes[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if i >= text.len() || bytes[i] != b':' {
-        return None;
-    }
-    i += 1;
-    while i < text.len() && bytes[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if i >= text.len() || bytes[i] != b'{' {
-        return None;
-    }
-
-    let start = i;
-    let mut depth = 0usize;
-    let mut in_string = false;
-    let mut esc = false;
-
-    while i < text.len() {
-        let b = bytes[i];
-        if in_string {
-            if esc {
-                esc = false;
-            } else if b == b'\\' {
-                esc = true;
-            } else if b == b'"' {
-                in_string = false;
-            }
-            i += 1;
-            continue;
-        }
-
-        match b {
-            b'"' => {
-                in_string = true;
-                i += 1;
-            }
-            b'{' => {
-                depth += 1;
-                i += 1;
-            }
-            b'}' => {
-                depth -= 1;
-                i += 1;
-                if depth == 0 {
-                    return Some(&text[start..i]);
-                }
-            }
-            _ => i += 1,
-        }
-    }
-    None
+#[derive(Debug, Deserialize)]
+struct PluginManifest {
+    id: String,
+    #[serde(default)]
+    backend: Option<PluginManifestBackend>,
 }
 
 fn manifest_defaults(plugin_dir: &Path) -> Result<(String, Option<String>), String> {
@@ -215,13 +120,20 @@ fn manifest_defaults(plugin_dir: &Path) -> Result<(String, Option<String>), Stri
         ));
     }
     let text = read_to_string(&manifest_path)?;
-    let id = json_extract_string_value(&text, "id")
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| format!("manifest {} is missing a string 'id'", manifest_path.display()))?;
+    let manifest: PluginManifest = serde_json::from_str(&text)
+        .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
 
-    let exec = json_extract_object_slice(&text, "backend")
-        .and_then(|backend| json_extract_string_value(backend, "exec"))
+    let id = manifest.id.trim().to_string();
+    if id.is_empty() {
+        return Err(format!(
+            "manifest {} is missing a string 'id'",
+            manifest_path.display()
+        ));
+    }
+
+    let exec = manifest
+        .backend
+        .and_then(|b| b.exec)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
