@@ -11,45 +11,18 @@ use zip::write::FileOptions;
 use zip::CompressionMethod;
 
 fn usage() -> &'static str {
-    "openvcs-plugin <command> [args]\n\
+    "openvcs-plugin [args]\n\
 \n\
-Commands:\n\
-  package   Build a plugin and assemble a bundle directory\n\
-  bundle    Build a plugin and assemble a single .ovcsp zip\n\
-\n\
-Package args:\n\
   --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n\
-  --plugin-id <id>      Optional plugin id (default: manifest id)\n\
-  --bin <name>          Optional cargo binary name to build (default: manifest backend.exec)\n\
-  --exec <name>         Executable name in manifest (default: --bin)\n\
-  --profile <name>      debug|release (default: release)\n\
   --out <path>          Output directory (default: ./dist)\n\
-  --target <triple>     Optional cargo --target (repeatable)\n\
-  --package <name>      Optional cargo -p <name>\n"
+\n\
+Builds a WASI plugin binary (`wasm32-wasip2`) and packages it into a single `.ovcsp` zip.\n"
 }
 
 #[derive(Debug)]
-struct PackageArgs {
+struct Args {
     plugin_dir: PathBuf,
-    plugin_id: String,
-    package: Option<String>,
-    bin: String,
-    exec: String,
-    profile: String,
     out_dir: PathBuf,
-    target: Option<String>,
-}
-
-#[derive(Debug)]
-struct BundleArgs {
-    plugin_dir: PathBuf,
-    plugin_id: Option<String>,
-    package: Option<String>,
-    bin: Option<String>,
-    exec: Option<String>,
-    profile: String,
-    out_dir: PathBuf,
-    targets: Vec<String>,
 }
 
 fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
@@ -59,15 +32,9 @@ fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
     Ok(args.remove(0).to_string_lossy().to_string())
 }
 
-fn parse_package_args(mut args: Vec<OsString>) -> Result<PackageArgs, String> {
+fn parse_args(mut args: Vec<OsString>) -> Result<Args, String> {
     let mut plugin_dir: Option<PathBuf> = None;
-    let mut plugin_id: Option<String> = None;
-    let mut package: Option<String> = None;
-    let mut bin: Option<String> = None;
-    let mut exec: Option<String> = None;
-    let mut profile: String = "release".to_string();
     let mut out_dir: PathBuf = PathBuf::from("dist");
-    let mut target: Option<String> = None;
 
     while let Some(arg) = args.first().cloned() {
         let s = arg.to_string_lossy();
@@ -79,97 +46,14 @@ fn parse_package_args(mut args: Vec<OsString>) -> Result<PackageArgs, String> {
             "--plugin-dir" => {
                 plugin_dir = Some(PathBuf::from(take_value(&mut args, "--plugin-dir")?))
             }
-            "--plugin-id" => plugin_id = Some(take_value(&mut args, "--plugin-id")?),
-            "--package" => package = Some(take_value(&mut args, "--package")?),
-            "--bin" => bin = Some(take_value(&mut args, "--bin")?),
-            "--exec" => exec = Some(take_value(&mut args, "--exec")?),
-            "--profile" => profile = take_value(&mut args, "--profile")?,
             "--out" => out_dir = PathBuf::from(take_value(&mut args, "--out")?),
-            "--target" => target = Some(take_value(&mut args, "--target")?),
             "--help" => return Err(usage().to_string()),
             other => return Err(format!("unknown flag: {other}")),
         }
     }
 
     let plugin_dir = plugin_dir.ok_or_else(|| "missing required flag: --plugin-dir".to_string())?;
-    let plugin_id = plugin_id.ok_or_else(|| "missing required flag: --plugin-id".to_string())?;
-    let bin = bin.ok_or_else(|| "missing required flag: --bin".to_string())?;
-    let exec = exec.unwrap_or_else(|| bin.clone());
-
-    match profile.as_str() {
-        "debug" | "release" => {}
-        other => {
-            return Err(format!(
-                "unsupported --profile '{other}' (expected debug|release)"
-            ));
-        }
-    }
-
-    Ok(PackageArgs {
-        plugin_dir,
-        plugin_id,
-        package,
-        bin,
-        exec,
-        profile,
-        out_dir,
-        target,
-    })
-}
-
-fn parse_bundle_args(mut args: Vec<OsString>) -> Result<BundleArgs, String> {
-    let mut plugin_dir: Option<PathBuf> = None;
-    let mut plugin_id: Option<String> = None;
-    let mut package: Option<String> = None;
-    let mut bin: Option<String> = None;
-    let mut exec: Option<String> = None;
-    let mut profile: String = "release".to_string();
-    let mut out_dir: PathBuf = PathBuf::from("dist");
-    let mut targets: Vec<String> = Vec::new();
-
-    while let Some(arg) = args.first().cloned() {
-        let s = arg.to_string_lossy();
-        if !s.starts_with("--") {
-            return Err(format!("unexpected argument: {s}"));
-        }
-        args.remove(0);
-        match s.as_ref() {
-            "--plugin-dir" => {
-                plugin_dir = Some(PathBuf::from(take_value(&mut args, "--plugin-dir")?))
-            }
-            "--plugin-id" => plugin_id = Some(take_value(&mut args, "--plugin-id")?),
-            "--package" => package = Some(take_value(&mut args, "--package")?),
-            "--bin" => bin = Some(take_value(&mut args, "--bin")?),
-            "--exec" => exec = Some(take_value(&mut args, "--exec")?),
-            "--profile" => profile = take_value(&mut args, "--profile")?,
-            "--out" => out_dir = PathBuf::from(take_value(&mut args, "--out")?),
-            "--target" => targets.push(take_value(&mut args, "--target")?),
-            "--help" => return Err(usage().to_string()),
-            other => return Err(format!("unknown flag: {other}")),
-        }
-    }
-
-    let plugin_dir = plugin_dir.ok_or_else(|| "missing required flag: --plugin-dir".to_string())?;
-
-    match profile.as_str() {
-        "debug" | "release" => {}
-        other => {
-            return Err(format!(
-                "unsupported --profile '{other}' (expected debug|release)"
-            ));
-        }
-    }
-
-    Ok(BundleArgs {
-        plugin_dir,
-        plugin_id,
-        package,
-        bin,
-        exec,
-        profile,
-        out_dir,
-        targets,
-    })
+    Ok(Args { plugin_dir, out_dir })
 }
 
 fn run_status(mut cmd: Command) -> Result<(), String> {
@@ -183,34 +67,22 @@ fn run_status(mut cmd: Command) -> Result<(), String> {
     }
 }
 
-fn build_plugin(args: &PackageArgs) -> Result<(), String> {
+fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<(), String> {
     let mut cmd = Command::new("cargo");
-    cmd.current_dir(&args.plugin_dir);
+    cmd.current_dir(plugin_dir);
     cmd.arg("build");
-    if args.profile == "release" {
-        cmd.arg("--release");
-    }
-    if let Some(target) = &args.target {
-        cmd.args(["--target", target]);
-    }
-    if let Some(pkg) = &args.package {
-        cmd.args(["-p", pkg]);
-    }
-    cmd.args(["--bin", &args.bin]);
+    cmd.arg("--release");
+    cmd.args(["--target", "wasm32-wasip2"]);
+    cmd.args(["--bin", bin]);
     run_status(cmd)
 }
 
-fn built_binary_path(plugin_dir: &Path, profile: &str, bin: &str, target: Option<&str>) -> PathBuf {
+fn built_wasi_wasm_path(plugin_dir: &Path, bin: &str) -> PathBuf {
     let mut p = plugin_dir.to_path_buf();
     p.push("target");
-    if let Some(target) = target {
-        p.push(target);
-    }
-    p.push(profile);
-    p.push(bin);
-    if target.map(|t| t.contains("windows")).unwrap_or(cfg!(windows)) {
-        p.set_extension("exe");
-    }
+    p.push("wasm32-wasip2");
+    p.push("release");
+    p.push(format!("{bin}.wasm"));
     p
 }
 
@@ -219,51 +91,6 @@ fn copy_with_permissions(src: &Path, dst: &Path) -> io::Result<()> {
     let perm = fs::metadata(src)?.permissions();
     fs::set_permissions(dst, perm)?;
     Ok(())
-}
-
-fn package_plugin(args: &PackageArgs) -> Result<PathBuf, String> {
-    let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
-    if !manifest_src.is_file() {
-        return Err(format!(
-            "missing openvcs.plugin.json at {}",
-            manifest_src.display()
-        ));
-    }
-
-    build_plugin(args)?;
-
-    let bin_src = built_binary_path(&args.plugin_dir, &args.profile, &args.bin, args.target.as_deref());
-    if !bin_src.is_file() {
-        return Err(format!(
-            "built binary not found at {} (did cargo build succeed?)",
-            bin_src.display()
-        ));
-    }
-
-    let bundle_dir = args.out_dir.join(&args.plugin_id);
-    let bin_dir = bundle_dir.join("bin");
-    fs::create_dir_all(&bin_dir)
-        .map_err(|e| format!("failed to create {}: {e}", bin_dir.display()))?;
-
-    let manifest_dst = bundle_dir.join("openvcs.plugin.json");
-    fs::copy(&manifest_src, &manifest_dst).map_err(|e| {
-        format!(
-            "failed to copy manifest {} -> {}: {e}",
-            manifest_src.display(),
-            manifest_dst.display()
-        )
-    })?;
-
-    let bin_dst = bin_dir.join(&args.exec);
-    copy_with_permissions(&bin_src, &bin_dst).map_err(|e| {
-        format!(
-            "failed to copy binary {} -> {}: {e}",
-            bin_src.display(),
-            bin_dst.display()
-        )
-    })?;
-
-    Ok(bundle_dir)
 }
 
 fn read_to_string(path: &Path) -> Result<String, String> {
@@ -401,29 +228,6 @@ fn manifest_defaults(plugin_dir: &Path) -> Result<(String, Option<String>), Stri
     Ok((id, exec))
 }
 
-fn build_plugin_once(
-    plugin_dir: &Path,
-    profile: &str,
-    bin: &str,
-    package: Option<&str>,
-    target: Option<&str>,
-) -> Result<(), String> {
-    let mut cmd = Command::new("cargo");
-    cmd.current_dir(plugin_dir);
-    cmd.arg("build");
-    if profile == "release" {
-        cmd.arg("--release");
-    }
-    if let Some(target) = target {
-        cmd.args(["--target", target]);
-    }
-    if let Some(pkg) = package {
-        cmd.args(["-p", pkg]);
-    }
-    cmd.args(["--bin", bin]);
-    run_status(cmd)
-}
-
 fn unique_staging_dir(out_dir: &Path) -> PathBuf {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -485,31 +289,14 @@ fn write_zip(zip_path: &Path, base_dir: &Path, root: &Path) -> Result<(), String
     Ok(())
 }
 
-fn bundle_plugin(args: &BundleArgs) -> Result<PathBuf, String> {
+fn bundle_plugin(args: &Args) -> Result<PathBuf, String> {
     let (manifest_id, manifest_exec) = manifest_defaults(&args.plugin_dir)?;
-    let plugin_id = args
-        .plugin_id
-        .as_deref()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or(manifest_id);
+    let plugin_id = manifest_id;
 
-    let bin = args
-        .bin
-        .as_deref()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .or_else(|| manifest_exec.clone())
-        .ok_or_else(|| {
-            "unable to infer --bin (manifest has no backend.exec); pass --bin explicitly".to_string()
-        })?;
-
-    let exec = args
-        .exec
-        .as_deref()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| bin.clone());
+    let exec = manifest_exec.clone().ok_or_else(|| {
+        "unable to infer plugin backend.exec from openvcs.plugin.json".to_string()
+    })?;
+    let bin = exec.clone();
 
     let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
 
@@ -531,84 +318,23 @@ fn bundle_plugin(args: &BundleArgs) -> Result<PathBuf, String> {
         )
     })?;
 
-    if args.targets.is_empty() {
-        build_plugin_once(
-            &args.plugin_dir,
-            &args.profile,
-            &bin,
-            args.package.as_deref(),
-            None,
-        )?;
-        let bin_src = built_binary_path(&args.plugin_dir, &args.profile, &bin, None);
-        if !bin_src.is_file() {
-            return Err(format!(
-                "built binary not found at {} (did cargo build succeed?)",
-                bin_src.display()
-            ));
-        }
-        copy_with_permissions(&bin_src, &bin_dir.join(&exec)).map_err(|e| {
-            format!(
-                "failed to copy binary {} -> {}: {e}",
-                bin_src.display(),
-                bin_dir.join(&exec).display()
-            )
-        })?;
-    } else if args.targets.len() == 1 {
-        let target = args.targets[0].trim();
-        build_plugin_once(
-            &args.plugin_dir,
-            &args.profile,
-            &bin,
-            args.package.as_deref(),
-            Some(target),
-        )?;
-        let bin_src = built_binary_path(&args.plugin_dir, &args.profile, &bin, Some(target));
-        if !bin_src.is_file() {
-            return Err(format!(
-                "built binary not found at {} (did cargo build succeed?)",
-                bin_src.display()
-            ));
-        }
-        // Keep backward-compatible bin/ layout for single-target bundles.
-        copy_with_permissions(&bin_src, &bin_dir.join(&exec)).map_err(|e| {
-            format!(
-                "failed to copy binary {} -> {}: {e}",
-                bin_src.display(),
-                bin_dir.join(&exec).display()
-            )
-        })?;
-    } else {
-        for target in &args.targets {
-            let target = target.trim();
-            if target.is_empty() {
-                continue;
-            }
-            build_plugin_once(
-                &args.plugin_dir,
-                &args.profile,
-                &bin,
-                args.package.as_deref(),
-                Some(target),
-            )?;
-            let bin_src = built_binary_path(&args.plugin_dir, &args.profile, &bin, Some(target));
-            if !bin_src.is_file() {
-                return Err(format!(
-                    "built binary not found at {} (did cargo build succeed?)",
-                    bin_src.display()
-                ));
-            }
-            let target_dir = bin_dir.join(target);
-            fs::create_dir_all(&target_dir)
-                .map_err(|e| format!("failed to create {}: {e}", target_dir.display()))?;
-            copy_with_permissions(&bin_src, &target_dir.join(&exec)).map_err(|e| {
-                format!(
-                    "failed to copy binary {} -> {}: {e}",
-                    bin_src.display(),
-                    target_dir.join(&exec).display()
-                )
-            })?;
-        }
+    build_plugin_wasi(&args.plugin_dir, &bin)?;
+    let wasm_src = built_wasi_wasm_path(&args.plugin_dir, &bin);
+    if !wasm_src.is_file() {
+        return Err(format!(
+            "built wasm not found at {} (did cargo build succeed?)",
+            wasm_src.display()
+        ));
     }
+
+    let wasm_dst = bin_dir.join(format!("{exec}.wasm"));
+    copy_with_permissions(&wasm_src, &wasm_dst).map_err(|e| {
+        format!(
+            "failed to copy wasm {} -> {}: {e}",
+            wasm_src.display(),
+            wasm_dst.display()
+        )
+    })?;
 
     let out_path = args.out_dir.join(format!("{plugin_id}.ovcsp"));
     if out_path.exists() {
@@ -626,70 +352,22 @@ fn main() -> ExitCode {
     let mut args: Vec<OsString> = env::args_os().collect();
     let _exe = args.remove(0);
 
-    let cmd = args
-        .first()
-        .cloned()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    // Convenience: allow `openvcs-plugin --plugin-dir ...` (defaults to `bundle`).
-    let (command, rest) = if cmd.starts_with("--") {
-        ("bundle".to_string(), args)
-    } else if cmd.is_empty() {
-        eprintln!("{}", usage());
-        return ExitCode::from(2);
-    } else {
-        let mut a = args;
-        a.remove(0);
-        (cmd, a)
+    let parsed = match parse_args(args) {
+        Ok(p) => p,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return ExitCode::from(2);
+        }
     };
 
-    match command.as_str() {
-        "package" => {
-            let parsed = match parse_package_args(rest) {
-                Ok(p) => p,
-                Err(msg) => {
-                    eprintln!("{msg}");
-                    return ExitCode::from(2);
-                }
-            };
-            match package_plugin(&parsed) {
-                Ok(dir) => {
-                    println!("{}", dir.display());
-                    ExitCode::SUCCESS
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    ExitCode::from(1)
-                }
-            }
-        }
-        "bundle" => {
-            let parsed = match parse_bundle_args(rest) {
-                Ok(p) => p,
-                Err(msg) => {
-                    eprintln!("{msg}");
-                    return ExitCode::from(2);
-                }
-            };
-            match bundle_plugin(&parsed) {
-                Ok(path) => {
-                    println!("{}", path.display());
-                    ExitCode::SUCCESS
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    ExitCode::from(1)
-                }
-            }
-        }
-        "--help" | "help" => {
-            print!("{}", usage());
+    match bundle_plugin(&parsed) {
+        Ok(path) => {
+            println!("{}", path.display());
             ExitCode::SUCCESS
         }
-        other => {
-            eprintln!("unknown command: {other}\n\n{}", usage());
-            ExitCode::from(2)
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
         }
     }
 }
