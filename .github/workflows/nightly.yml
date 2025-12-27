@@ -118,7 +118,7 @@ jobs:
           Compress-Archive -Path dist\\openvcs-plugin-Windows-x86_64.exe -DestinationPath openvcs-plugin-Windows-x86_64.zip -Force
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sdk-nightly-${{ runner.os }}
           path: |
