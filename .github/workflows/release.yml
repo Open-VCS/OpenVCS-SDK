@@ -82,13 +82,15 @@ jobs:
             echo "tag=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          python - <<'PY'
+          TAG="$(python - <<'PY'
           import tomllib
           with open("Cargo.toml", "rb") as f:
               data = tomllib.load(f)
           ver = data["package"]["version"]
-          print(f"tag=sdk-v{ver}")
-          PY >> "$GITHUB_OUTPUT"
+          print(f"sdk-v{ver}")
+          PY
+          )"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
