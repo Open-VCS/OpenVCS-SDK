@@ -69,7 +69,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       INPUT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
-      INPUT_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
     steps:
       - uses: actions/checkout@v4
 
@@ -102,7 +101,7 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
-          prerelease: ${{ env.INPUT_PRERELEASE }}
+          prerelease: true
           generate_release_notes: true
           files: |
             artifacts/**/*
