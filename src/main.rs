@@ -74,6 +74,9 @@ fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<(), String> {
     cmd.arg("build");
     cmd.arg("--release");
     cmd.args(["--target", "wasm32-wasip2"]);
+    cmd.arg("--no-default-features");
+    cmd.args(["--features", "wasi"]);
+    cmd.args(["-p", bin]);
     cmd.args(["--bin", bin]);
     run_status(cmd)
 }
