@@ -58,7 +58,9 @@ fn parse_package_args(mut args: Vec<OsString>) -> Result<PackageArgs, String> {
         }
         args.remove(0);
         match s.as_ref() {
-            "--plugin-dir" => plugin_dir = Some(PathBuf::from(take_value(&mut args, "--plugin-dir")?)),
+            "--plugin-dir" => {
+                plugin_dir = Some(PathBuf::from(take_value(&mut args, "--plugin-dir")?))
+            }
             "--plugin-id" => plugin_id = Some(take_value(&mut args, "--plugin-id")?),
             "--package" => package = Some(take_value(&mut args, "--package")?),
             "--bin" => bin = Some(take_value(&mut args, "--bin")?),
@@ -78,7 +80,11 @@ fn parse_package_args(mut args: Vec<OsString>) -> Result<PackageArgs, String> {
 
     match profile.as_str() {
         "debug" | "release" => {}
-        other => return Err(format!("unsupported --profile '{other}' (expected debug|release)")),
+        other => {
+            return Err(format!(
+                "unsupported --profile '{other}' (expected debug|release)"
+            ));
+        }
     }
 
     Ok(PackageArgs {
@@ -228,4 +234,3 @@ fn main() -> ExitCode {
         }
     }
 }
-
