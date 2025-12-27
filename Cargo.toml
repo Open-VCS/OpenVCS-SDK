@@ -8,3 +8,4 @@ name = "openvcs-plugin"
 path = "src/main.rs"
 
 [dependencies]
+zip = "2"
