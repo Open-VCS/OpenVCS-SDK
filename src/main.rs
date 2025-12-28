@@ -73,7 +73,6 @@ fn build_plugin_native(plugin_dir: &Path, bin: &str) -> Result<(), String> {
     cmd.current_dir(plugin_dir);
     cmd.arg("build");
     cmd.arg("--release");
-    cmd.args(["-p", bin]);
     cmd.args(["--bin", bin]);
     run_status(cmd)
 }
