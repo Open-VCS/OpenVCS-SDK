@@ -7,18 +7,26 @@ use std::process::ExitCode;
 
 fn print_usage() {
     eprintln!(
-        "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>]
+        "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--fix]
 
 Defaults:
 - If run inside a plugin folder (contains openvcs.plugin.json), bundles that plugin.
 - Otherwise, pass --all to bundle all plugin subfolders (one per subfolder containing openvcs.plugin.json).
 Default output directory: ./dist
+
+Options:
+- --all: bundle all plugins in the target directory
+- --fix: run `cargo fix` in Rust plugin directories before bundling
 "
     );
 }
 
 fn is_plugin_dir(dir: &PathBuf) -> bool {
     dir.join("openvcs.plugin.json").is_file()
+}
+
+fn is_rust_plugin_dir(dir: &PathBuf) -> bool {
+    dir.join("Cargo.toml").is_file()
 }
 
 fn discover_plugin_dirs(root: &PathBuf) -> Result<Vec<PathBuf>, String> {
@@ -37,12 +45,49 @@ fn discover_plugin_dirs(root: &PathBuf) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+fn run_cargo_fix(dir: &PathBuf) -> Result<(), String> {
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.current_dir(dir);
+    cmd.arg("fix");
+    cmd.arg("--allow-dirty");
+    cmd.arg("--allow-staged");
+
+    // Prefer fixing in the wasm32-wasip1 configuration (plugins are compiled to WASI).
+    // If the target isn't available, fall back to a host-target fix.
+    let status = cmd
+        .arg("--target")
+        .arg("wasm32-wasip1")
+        .status()
+        .map_err(|e| format!("failed to spawn cargo fix: {e}"))?;
+    if status.success() {
+        return Ok(());
+    }
+
+    let status = std::process::Command::new("cargo")
+        .current_dir(dir)
+        .arg("fix")
+        .arg("--allow-dirty")
+        .arg("--allow-staged")
+        .status()
+        .map_err(|e| format!("failed to spawn cargo fix: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cargo fix failed in {} (code {:?})",
+            dir.display(),
+            status.code()
+        ))
+    }
+}
+
 fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     let cwd = env::current_dir()
         .map_err(|e| format!("failed to determine current directory: {e}"))?;
     let mut plugin_dir: Option<PathBuf> = None;
     let mut out_dir = cwd.join("dist");
     let mut all = false;
+    let mut fix = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         let s = arg.to_string_lossy();
@@ -61,6 +106,9 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
             }
             "--all" => {
                 all = true;
+            }
+            "--fix" => {
+                fix = true;
             }
             "--help" => {
                 print_usage();
@@ -100,6 +148,9 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
 
     let mut out_paths = Vec::new();
     for dir in plugin_dirs {
+        if fix && is_rust_plugin_dir(&dir) {
+            run_cargo_fix(&dir)?;
+        }
         let parsed = PluginBuildArgs {
             plugin_dir: dir,
             out_dir: out_dir.clone(),
