@@ -22,8 +22,8 @@ Builds plugin executables and packages them into a single `.ovcsp` zip.\n"
 
 #[derive(Debug)]
 pub struct PluginBuildArgs {
-    plugin_dir: PathBuf,
-    out_dir: PathBuf,
+    pub plugin_dir: PathBuf,
+    pub out_dir: PathBuf,
 }
 
 fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
