@@ -7,6 +7,10 @@ edition = "2024"
 name = "openvcs-plugin"
 path = "src/main.rs"
 
+[[bin]]
+name = "cargo-openvcs"
+path = "src/bin/cargo-openvcs.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
