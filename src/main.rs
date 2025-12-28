@@ -121,12 +121,16 @@ struct PluginManifestFunctions {
 struct PluginManifest {
     id: String,
     #[serde(default)]
+    entry: Option<String>,
+    #[serde(default)]
     backend: Option<PluginManifestBackend>,
     #[serde(default)]
     functions: Option<PluginManifestFunctions>,
 }
 
-fn manifest_defaults(plugin_dir: &Path) -> Result<(String, Option<String>, Option<String>), String> {
+fn manifest_defaults(
+    plugin_dir: &Path,
+) -> Result<(String, Option<String>, Option<String>, Option<String>), String> {
     let manifest_path = plugin_dir.join("openvcs.plugin.json");
     if !manifest_path.is_file() {
         return Err(format!(
@@ -158,7 +162,12 @@ fn manifest_defaults(plugin_dir: &Path) -> Result<(String, Option<String>, Optio
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
-    Ok((id, exec, functions_exec))
+    let entry = manifest
+        .entry
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    Ok((id, exec, functions_exec, entry))
 }
 
 fn unique_staging_dir(out_dir: &Path) -> PathBuf {
@@ -222,12 +231,42 @@ fn write_zip(zip_path: &Path, base_dir: &Path, root: &Path) -> Result<(), String
     Ok(())
 }
 
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.exists() {
+        return Ok(());
+    }
+    if !src.is_dir() {
+        return Err(format!("expected directory: {}", src.display()));
+    }
+    fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {e}", dst.display()))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("read_dir {}: {e}", src.display()))? {
+        let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let dst_path = dst.join(name);
+        if path.is_dir() {
+            copy_dir_recursive(&path, &dst_path)?;
+        } else if path.is_file() {
+            fs::copy(&path, &dst_path).map_err(|e| {
+                format!(
+                    "failed to copy {} -> {}: {e}",
+                    path.display(),
+                    dst_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
 fn bundle_plugin(args: &Args) -> Result<PathBuf, String> {
-    let (manifest_id, backend_exec, functions_exec) = manifest_defaults(&args.plugin_dir)?;
+    let (manifest_id, backend_exec, functions_exec, entry) = manifest_defaults(&args.plugin_dir)?;
     let plugin_id = manifest_id;
 
-    if backend_exec.is_none() && functions_exec.is_none() {
-        return Err("manifest has no backend.exec or functions.exec".to_string());
+    let has_wasm = backend_exec.is_some() || functions_exec.is_some();
+    let has_ui_or_assets = entry.is_some() || args.plugin_dir.join("themes").is_dir();
+    if !has_wasm && !has_ui_or_assets {
+        return Err("manifest has no backend.exec, functions.exec, entry, or themes/".to_string());
     }
 
     let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
@@ -249,6 +288,33 @@ fn bundle_plugin(args: &Args) -> Result<PathBuf, String> {
             bundle_dir.join("openvcs.plugin.json").display()
         )
     })?;
+
+    if let Some(entry) = entry {
+        let entry_src = args.plugin_dir.join(&entry);
+        if !entry_src.is_file() {
+            return Err(format!(
+                "manifest entry not found at {}",
+                entry_src.display()
+            ));
+        }
+        let entry_dst = bundle_dir.join(&entry);
+        if let Some(parent) = entry_dst.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
+        }
+        fs::copy(&entry_src, &entry_dst).map_err(|e| {
+            format!(
+                "failed to copy entry {} -> {}: {e}",
+                entry_src.display(),
+                entry_dst.display()
+            )
+        })?;
+    }
+
+    let themes_src = args.plugin_dir.join("themes");
+    if themes_src.is_dir() {
+        copy_dir_recursive(&themes_src, &bundle_dir.join("themes"))?;
+    }
 
     for exec in [backend_exec, functions_exec].into_iter().flatten() {
         let exec = exec.trim().to_string();
