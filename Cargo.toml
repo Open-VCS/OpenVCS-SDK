@@ -1,11 +1,20 @@
 [package]
 name = "openvcs-sdk"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
+description = "SDK for building/bundling OpenVCS plugins and packaging them as .ovcsp bundles."
+license = "GPL-3.0-or-later"
+homepage = "https://openvcs.dev/"
+repository = "https://github.com/Open-VCS/OpenVCS-SDK"
+readme = "README.md"
 
 [[bin]]
 name = "openvcs-plugin"
 path = "src/main.rs"
+
+[[bin]]
+name = "cargo-openvcs"
+path = "src/bin/cargo-openvcs.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
