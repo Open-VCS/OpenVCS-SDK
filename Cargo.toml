@@ -1,6 +1,6 @@
 [package]
 name = "openvcs-sdk"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "SDK for building/bundling OpenVCS plugins and packaging them as .ovcsp bundles."
 license = "GPL-3.0-or-later"
