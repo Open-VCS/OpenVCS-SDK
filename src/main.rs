@@ -17,7 +17,7 @@ fn usage() -> &'static str {
   --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n\
   --out <path>          Output directory (default: ./dist)\n\
 \n\
-Builds a WASI plugin binary (`wasm32-wasip2`) and packages it into a single `.ovcsp` zip.\n"
+Builds plugin executables and packages them into a single `.ovcsp` zip.\n"
 }
 
 #[derive(Debug)]
@@ -68,26 +68,35 @@ fn run_status(mut cmd: Command) -> Result<(), String> {
     }
 }
 
-fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<(), String> {
+fn build_plugin_native(plugin_dir: &Path, bin: &str) -> Result<(), String> {
     let mut cmd = Command::new("cargo");
     cmd.current_dir(plugin_dir);
     cmd.arg("build");
     cmd.arg("--release");
-    cmd.args(["--target", "wasm32-wasip2"]);
-    cmd.arg("--no-default-features");
-    cmd.args(["--features", "wasi"]);
     cmd.args(["-p", bin]);
     cmd.args(["--bin", bin]);
     run_status(cmd)
 }
 
-fn built_wasi_wasm_path(plugin_dir: &Path, bin: &str) -> PathBuf {
+fn built_native_bin_path(plugin_dir: &Path, bin: &str) -> PathBuf {
     let mut p = plugin_dir.to_path_buf();
     p.push("target");
-    p.push("wasm32-wasip2");
     p.push("release");
-    p.push(format!("{bin}.wasm"));
+    p.push(format!("{bin}{}", std::env::consts::EXE_SUFFIX));
     p
+}
+
+fn platform_exec_filename(exec: &str) -> String {
+    let exec = exec.trim();
+    if exec.is_empty() {
+        return String::new();
+    }
+    let suffix = std::env::consts::EXE_SUFFIX;
+    if !suffix.is_empty() && exec.ends_with(suffix) {
+        exec.to_string()
+    } else {
+        format!("{exec}{suffix}")
+    }
 }
 
 fn copy_with_permissions(src: &Path, dst: &Path) -> io::Result<()> {
@@ -108,13 +117,21 @@ struct PluginManifestBackend {
 }
 
 #[derive(Debug, Deserialize)]
+struct PluginManifestFunctions {
+    #[serde(default)]
+    exec: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct PluginManifest {
     id: String,
     #[serde(default)]
     backend: Option<PluginManifestBackend>,
+    #[serde(default)]
+    functions: Option<PluginManifestFunctions>,
 }
 
-fn manifest_defaults(plugin_dir: &Path) -> Result<(String, Option<String>), String> {
+fn manifest_defaults(plugin_dir: &Path) -> Result<(String, Option<String>, Option<String>), String> {
     let manifest_path = plugin_dir.join("openvcs.plugin.json");
     if !manifest_path.is_file() {
         return Err(format!(
@@ -140,7 +157,13 @@ fn manifest_defaults(plugin_dir: &Path) -> Result<(String, Option<String>), Stri
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
-    Ok((id, exec))
+    let functions_exec = manifest
+        .functions
+        .and_then(|f| f.exec)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    Ok((id, exec, functions_exec))
 }
 
 fn unique_staging_dir(out_dir: &Path) -> PathBuf {
@@ -205,13 +228,12 @@ fn write_zip(zip_path: &Path, base_dir: &Path, root: &Path) -> Result<(), String
 }
 
 fn bundle_plugin(args: &Args) -> Result<PathBuf, String> {
-    let (manifest_id, manifest_exec) = manifest_defaults(&args.plugin_dir)?;
+    let (manifest_id, backend_exec, functions_exec) = manifest_defaults(&args.plugin_dir)?;
     let plugin_id = manifest_id;
 
-    let exec = manifest_exec.clone().ok_or_else(|| {
-        "unable to infer plugin backend.exec from openvcs.plugin.json".to_string()
-    })?;
-    let bin = exec.clone();
+    if backend_exec.is_none() && functions_exec.is_none() {
+        return Err("manifest has no backend.exec or functions.exec".to_string());
+    }
 
     let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
 
@@ -233,23 +255,25 @@ fn bundle_plugin(args: &Args) -> Result<PathBuf, String> {
         )
     })?;
 
-    build_plugin_wasi(&args.plugin_dir, &bin)?;
-    let wasm_src = built_wasi_wasm_path(&args.plugin_dir, &bin);
-    if !wasm_src.is_file() {
-        return Err(format!(
-            "built wasm not found at {} (did cargo build succeed?)",
-            wasm_src.display()
-        ));
+    for exec in [backend_exec, functions_exec].into_iter().flatten() {
+        let bin = exec.clone();
+        build_plugin_native(&args.plugin_dir, &bin)?;
+        let bin_src = built_native_bin_path(&args.plugin_dir, &bin);
+        if !bin_src.is_file() {
+            return Err(format!(
+                "built executable not found at {} (did cargo build succeed?)",
+                bin_src.display()
+            ));
+        }
+        let bin_dst = bin_dir.join(platform_exec_filename(&exec));
+        copy_with_permissions(&bin_src, &bin_dst).map_err(|e| {
+            format!(
+                "failed to copy executable {} -> {}: {e}",
+                bin_src.display(),
+                bin_dst.display()
+            )
+        })?;
     }
-
-    let wasm_dst = bin_dir.join(format!("{exec}.wasm"));
-    copy_with_permissions(&wasm_src, &wasm_dst).map_err(|e| {
-        format!(
-            "failed to copy wasm {} -> {}: {e}",
-            wasm_src.display(),
-            wasm_dst.display()
-        )
-    })?;
 
     let out_path = args.out_dir.join(format!("{plugin_id}.ovcsp"));
     if out_path.exists() {
