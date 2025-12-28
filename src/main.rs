@@ -68,20 +68,28 @@ fn run_status(mut cmd: Command) -> Result<(), String> {
     }
 }
 
-fn build_plugin_native(plugin_dir: &Path, bin: &str) -> Result<(), String> {
-    let mut cmd = Command::new("cargo");
-    cmd.current_dir(plugin_dir);
-    cmd.arg("build");
-    cmd.arg("--release");
-    cmd.args(["--bin", bin]);
-    run_status(cmd)
+fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<String, String> {
+    for target in ["wasm32-wasip1", "wasm32-wasi"] {
+        let mut cmd = Command::new("cargo");
+        cmd.current_dir(plugin_dir);
+        cmd.arg("build");
+        cmd.arg("--release");
+        cmd.args(["--bin", bin]);
+        cmd.args(["--target", target]);
+        match run_status(cmd) {
+            Ok(()) => return Ok(target.to_string()),
+            Err(e) => eprintln!("openvcs-plugin: build for {target} failed: {e}"),
+        }
+    }
+    Err("failed to build plugin for wasm32-wasip1 or wasm32-wasi".to_string())
 }
 
-fn built_native_bin_path(plugin_dir: &Path, bin: &str) -> PathBuf {
+fn built_wasm_bin_path(plugin_dir: &Path, target: &str, bin: &str) -> PathBuf {
     let mut p = plugin_dir.to_path_buf();
     p.push("target");
+    p.push(target);
     p.push("release");
-    p.push(format!("{bin}{}", std::env::consts::EXE_SUFFIX));
+    p.push(format!("{bin}.wasm"));
     p
 }
 
@@ -90,19 +98,7 @@ fn platform_exec_filename(exec: &str) -> String {
     if exec.is_empty() {
         return String::new();
     }
-    let suffix = std::env::consts::EXE_SUFFIX;
-    if !suffix.is_empty() && exec.ends_with(suffix) {
-        exec.to_string()
-    } else {
-        format!("{exec}{suffix}")
-    }
-}
-
-fn copy_with_permissions(src: &Path, dst: &Path) -> io::Result<()> {
-    fs::copy(src, dst)?;
-    let perm = fs::metadata(src)?.permissions();
-    fs::set_permissions(dst, perm)?;
-    Ok(())
+    exec.to_string()
 }
 
 fn read_to_string(path: &Path) -> Result<String, String> {
@@ -255,19 +251,33 @@ fn bundle_plugin(args: &Args) -> Result<PathBuf, String> {
     })?;
 
     for exec in [backend_exec, functions_exec].into_iter().flatten() {
-        let bin = exec.clone();
-        build_plugin_native(&args.plugin_dir, &bin)?;
-        let bin_src = built_native_bin_path(&args.plugin_dir, &bin);
+        let exec = exec.trim().to_string();
+        if exec.is_empty() {
+            continue;
+        }
+
+        if !exec.ends_with(".wasm") {
+            return Err(format!(
+                "manifest exec must end with .wasm (OpenVCS is WASM-only): {exec}"
+            ));
+        }
+
+        let bin = exec
+            .strip_suffix(".wasm")
+            .ok_or_else(|| format!("invalid wasm exec: {exec}"))?
+            .to_string();
+        let target = build_plugin_wasi(&args.plugin_dir, &bin)?;
+        let bin_src = built_wasm_bin_path(&args.plugin_dir, &target, &bin);
         if !bin_src.is_file() {
             return Err(format!(
-                "built executable not found at {} (did cargo build succeed?)",
+                "built wasm not found at {} (did cargo build succeed?)",
                 bin_src.display()
             ));
         }
         let bin_dst = bin_dir.join(platform_exec_filename(&exec));
-        copy_with_permissions(&bin_src, &bin_dst).map_err(|e| {
+        fs::copy(&bin_src, &bin_dst).map_err(|e| {
             format!(
-                "failed to copy executable {} -> {}: {e}",
+                "failed to copy wasm {} -> {}: {e}",
                 bin_src.display(),
                 bin_dst.display()
             )
@@ -307,5 +317,15 @@ fn main() -> ExitCode {
             eprintln!("{err}");
             ExitCode::from(1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_exec_filename_leaves_wasm_unchanged() {
+        assert_eq!(platform_exec_filename("plugin.wasm"), "plugin.wasm");
     }
 }
