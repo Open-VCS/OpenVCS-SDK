@@ -53,7 +53,9 @@ pub fn parse_args(mut args: Vec<OsString>) -> Result<PluginBuildArgs, String> {
         }
     }
 
-    let plugin_dir = plugin_dir.ok_or_else(|| "missing required flag: --plugin-dir".to_string())?;
+    let plugin_dir = plugin_dir.unwrap_or_else(|| {
+        env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    });
     Ok(PluginBuildArgs { plugin_dir, out_dir })
 }
 
