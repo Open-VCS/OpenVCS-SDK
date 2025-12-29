@@ -1,4 +1,4 @@
-use openvcs_sdk::dist::{bundle_plugin, PluginBuildArgs};
+use openvcs_sdk::dist::{PluginBuildArgs, bundle_plugin};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -82,8 +82,8 @@ fn run_cargo_fix(dir: &PathBuf) -> Result<(), String> {
 }
 
 fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
-    let cwd = env::current_dir()
-        .map_err(|e| format!("failed to determine current directory: {e}"))?;
+    let cwd =
+        env::current_dir().map_err(|e| format!("failed to determine current directory: {e}"))?;
     let mut plugin_dir: Option<PathBuf> = None;
     let mut out_dir = cwd.join("dist");
     let mut all = false;
@@ -143,7 +143,9 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     };
 
     if plugin_dirs.is_empty() {
-        return Err("no plugins found (expected subfolders containing openvcs.plugin.json)".to_string());
+        return Err(
+            "no plugins found (expected subfolders containing openvcs.plugin.json)".to_string(),
+        );
     }
 
     let mut out_paths = Vec::new();

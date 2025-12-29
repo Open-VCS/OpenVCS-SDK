@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -7,9 +8,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::Deserialize;
-use zip::write::FileOptions;
 use zip::CompressionMethod;
+use zip::write::FileOptions;
 
 fn usage() -> &'static str {
     "openvcs-plugin [args]\n\
@@ -53,10 +53,12 @@ pub fn parse_args(mut args: Vec<OsString>) -> Result<PluginBuildArgs, String> {
         }
     }
 
-    let plugin_dir = plugin_dir.unwrap_or_else(|| {
-        env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    });
-    Ok(PluginBuildArgs { plugin_dir, out_dir })
+    let plugin_dir =
+        plugin_dir.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    Ok(PluginBuildArgs {
+        plugin_dir,
+        out_dir,
+    })
 }
 
 fn run_status(mut cmd: Command) -> Result<(), String> {
@@ -180,6 +182,8 @@ fn unique_staging_dir(out_dir: &Path) -> PathBuf {
     out_dir.join(format!(".openvcs-plugin-staging-{now}"))
 }
 
+const ICON_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "avif", "svg"];
+
 fn zip_dir(zip_path: &Path, base_dir: &Path, folder_name: &str) -> Result<(), String> {
     let root = base_dir.join(folder_name);
     write_zip(zip_path, base_dir, &root)
@@ -215,7 +219,8 @@ fn write_zip(zip_path: &Path, base_dir: &Path, root: &Path) -> Result<(), String
     let out = fs::File::create(zip_path)
         .map_err(|e| format!("failed to create {}: {e}", zip_path.display()))?;
     let mut zip = zip::ZipWriter::new(out);
-    let options: FileOptions<'_, ()> = FileOptions::default().compression_method(CompressionMethod::Stored);
+    let options: FileOptions<'_, ()> =
+        FileOptions::default().compression_method(CompressionMethod::Stored);
 
     for path in files {
         let zip_name = path_to_zip_name(base_dir, &path)?;
@@ -229,7 +234,8 @@ fn write_zip(zip_path: &Path, base_dir: &Path, root: &Path) -> Result<(), String
             .map_err(|e| format!("zip write failed: {e}"))?;
     }
 
-    zip.finish().map_err(|e| format!("zip finish failed: {e}"))?;
+    zip.finish()
+        .map_err(|e| format!("zip finish failed: {e}"))?;
     Ok(())
 }
 
@@ -257,6 +263,26 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
                 )
             })?;
         }
+    }
+    Ok(())
+}
+
+fn copy_icon(plugin_dir: &Path, bundle_dir: &Path) -> Result<(), String> {
+    for ext in ICON_EXTENSIONS {
+        let name = format!("icon.{ext}");
+        let src = plugin_dir.join(&name);
+        if !src.is_file() {
+            continue;
+        }
+        let dst = bundle_dir.join(&name);
+        fs::copy(&src, &dst).map_err(|e| {
+            format!(
+                "failed to copy icon {} -> {}: {e}",
+                src.display(),
+                dst.display()
+            )
+        })?;
+        break;
     }
     Ok(())
 }
@@ -290,6 +316,8 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
             bundle_dir.join("openvcs.plugin.json").display()
         )
     })?;
+
+    copy_icon(&args.plugin_dir, &bundle_dir)?;
 
     if let Some(entry) = entry {
         let entry_src = args.plugin_dir.join(&entry);
