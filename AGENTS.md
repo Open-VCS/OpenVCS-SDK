@@ -47,8 +47,10 @@
 - PRs should include: a brief description of behavior changes, how you tested (`cargo test`, bundling command used), and any linked issue(s).
 
 - Agents / automation: allowed to create or amend local commits and branches (for example, `git commit`, `git commit --amend`, and creating topic branches), but MUST NOT push commits to the remote or open pull requests.
-  - When an agent prepares changes, it should run the project's fixer command `just fix` (agents MUST NOT run `cargo fmt` or `cargo clippy` manually), create a descriptive commit, and then notify a human reviewer who will push the branch and open the PR.
-  - CI or other trusted automation that has been explicitly approved in project policy may be exempted; otherwise treat pushing as a human action.
+- When an agent prepares changes, it should run the project's fixer command `just fix` (agents MUST NOT run `cargo fmt` or `cargo clippy` manually), create a descriptive commit, and then notify a human reviewer who will push the branch and open the PR.
+- CI or other trusted automation that has been explicitly approved in project policy may be exempted; otherwise treat pushing as a human action.
+
+**Sandbox note**: Running `just fix` and some `cargo` commands (for example `cargo build`, `cargo test`, or commands that fetch dependencies or add toolchain targets) may require network access or host-level tooling and therefore should be run outside a restricted sandbox or container. If operating with sandboxing or restricted network access, request approval before executing these commands or run them on the host machine.
 
 ## Packaging Notes (WASI)
 
