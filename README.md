@@ -8,3 +8,5 @@ Tooling for building and packaging OpenVCS plugins.
 ## Development
 - Required: `cargo fmt --all`
 - CI enforces: `cargo fmt --all -- --check`
+- CI also runs: `cargo clippy --all-targets -- -D warnings`
+- Convenience (if you have `just` installed): `just fix`

@@ -23,6 +23,7 @@
 ## Before Committing
 
 - Required: `cargo fmt`
+- CI runs `cargo clippy --all-targets -- -D warnings` after rustfmt.
 
 ## Coding Style & Naming Conventions
 
