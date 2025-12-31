@@ -20,6 +20,10 @@
 - Format: `cargo fmt`
 - Lint (recommended): `cargo clippy --all-targets -- -D warnings`
 
+## Before Committing
+
+- Required: `cargo fmt`
+
 ## Coding Style & Naming Conventions
 
 - Rust edition: 2024 (see `Cargo.toml`).
