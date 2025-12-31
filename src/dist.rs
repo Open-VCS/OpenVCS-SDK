@@ -110,7 +110,7 @@ fn read_to_string(path: &Path) -> Result<String, String> {
 }
 
 #[derive(Debug, Deserialize)]
-struct PluginManifestBackend {
+struct PluginManifestModule {
     #[serde(default)]
     exec: Option<String>,
 }
@@ -127,7 +127,7 @@ struct PluginManifest {
     #[serde(default)]
     entry: Option<String>,
     #[serde(default)]
-    backend: Option<PluginManifestBackend>,
+    module: Option<PluginManifestModule>,
     #[serde(default)]
     functions: Option<PluginManifestFunctions>,
 }
@@ -155,8 +155,8 @@ fn manifest_defaults(
     }
 
     let exec = manifest
-        .backend
-        .and_then(|b| b.exec)
+        .module
+        .and_then(|m| m.exec)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
@@ -288,13 +288,13 @@ fn copy_icon(plugin_dir: &Path, bundle_dir: &Path) -> Result<(), String> {
 }
 
 pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
-    let (manifest_id, backend_exec, functions_exec, entry) = manifest_defaults(&args.plugin_dir)?;
+    let (manifest_id, module_exec, functions_exec, entry) = manifest_defaults(&args.plugin_dir)?;
     let plugin_id = manifest_id;
 
-    let has_wasm = backend_exec.is_some() || functions_exec.is_some();
+    let has_wasm = module_exec.is_some() || functions_exec.is_some();
     let has_ui_or_assets = entry.is_some() || args.plugin_dir.join("themes").is_dir();
     if !has_wasm && !has_ui_or_assets {
-        return Err("manifest has no backend.exec, functions.exec, entry, or themes/".to_string());
+        return Err("manifest has no module.exec, functions.exec, entry, or themes/".to_string());
     }
 
     let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
@@ -346,7 +346,7 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
         copy_dir_recursive(&themes_src, &bundle_dir.join("themes"))?;
     }
 
-    for exec in [backend_exec, functions_exec].into_iter().flatten() {
+    for exec in [module_exec, functions_exec].into_iter().flatten() {
         let exec = exec.trim().to_string();
         if exec.is_empty() {
             continue;
