@@ -40,6 +40,9 @@
 ## Commit & Pull Request Guidelines
 
 - Commits in this repo typically use short, imperative subjects (e.g., “Update …”, “Fix …”); keep messages concise and scoped.
+- Commit message format: agents must format commit messages with a short
+  title of at most 72 characters, followed by a blank line and any
+  additional explanatory text in the body.
 - Open PRs against the `Dev` branch; keep `Stable` for releases.
 - PRs should include: a brief description of behavior changes, how you tested (`cargo test`, bundling command used), and any linked issue(s).
 
