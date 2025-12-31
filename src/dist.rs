@@ -191,8 +191,8 @@ fn reject_symlinks_recursive(dir: &Path) -> Result<(), String> {
     for entry in entries {
         let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
         let path = entry.path();
-        let meta = fs::symlink_metadata(&path)
-            .map_err(|e| format!("metadata {}: {e}", path.display()))?;
+        let meta =
+            fs::symlink_metadata(&path).map_err(|e| format!("metadata {}: {e}", path.display()))?;
         if meta.file_type().is_symlink() {
             return Err(format!("plugin contains a symlink: {}", path.display()));
         }
@@ -406,8 +406,8 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use std::fs;
-    use std::io::Read;
     use std::io::Cursor;
+    use std::io::Read;
     use std::path::PathBuf;
 
     #[test]
@@ -531,8 +531,12 @@ mod tests {
             let bytes = plugin.manifest_json.as_bytes();
             header.set_size(bytes.len() as u64);
             header.set_cksum();
-            tar.append_data(&mut header, format!("{plugin_id}/openvcs.plugin.json"), bytes)
-                .map_err(|e| format!("tar append manifest failed: {e}"))?;
+            tar.append_data(
+                &mut header,
+                format!("{plugin_id}/openvcs.plugin.json"),
+                bytes,
+            )
+            .map_err(|e| format!("tar append manifest failed: {e}"))?;
         }
 
         for ext in ICON_EXTENSIONS {
@@ -557,8 +561,12 @@ mod tests {
             let mut header = tar::Header::new_gnu();
             header.set_size(bytes.len() as u64);
             header.set_cksum();
-            tar.append_data(&mut header, format!("{plugin_id}/{entry}"), bytes.as_slice())
-                .map_err(|e| format!("tar append entry failed: {e}"))?;
+            tar.append_data(
+                &mut header,
+                format!("{plugin_id}/{entry}"),
+                bytes.as_slice(),
+            )
+            .map_err(|e| format!("tar append entry failed: {e}"))?;
         }
 
         for (path, bytes) in &plugin.root_files {
@@ -596,8 +604,12 @@ mod tests {
             let mut header = tar::Header::new_gnu();
             header.set_size(bytes.len() as u64);
             header.set_cksum();
-            tar.append_data(&mut header, format!("{plugin_id}/bin/{exec}"), bytes.as_slice())
-                .map_err(|e| format!("tar append wasm failed: {e}"))?;
+            tar.append_data(
+                &mut header,
+                format!("{plugin_id}/bin/{exec}"),
+                bytes.as_slice(),
+            )
+            .map_err(|e| format!("tar append wasm failed: {e}"))?;
         }
 
         let encoder = tar
@@ -800,7 +812,7 @@ mod tests {
         let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
         let entries = read_tar_xz_entries_bytes(&bundle_bytes);
         assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"x");
-        assert_eq!(entries.contains_key("x/bin/   "), false);
+        assert!(!entries.contains_key("x/bin/   "));
     }
 
     #[test]
