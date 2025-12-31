@@ -132,18 +132,11 @@ struct PluginManifest {
     functions: Option<PluginManifestFunctions>,
 }
 
-fn manifest_defaults(
-    plugin_dir: &Path,
+fn parse_manifest_text(
+    text: &str,
+    manifest_path: &Path,
 ) -> Result<(String, Option<String>, Option<String>, Option<String>), String> {
-    let manifest_path = plugin_dir.join("openvcs.plugin.json");
-    if !manifest_path.is_file() {
-        return Err(format!(
-            "missing openvcs.plugin.json at {}",
-            manifest_path.display()
-        ));
-    }
-    let text = read_to_string(&manifest_path)?;
-    let manifest: PluginManifest = serde_json::from_str(&text)
+    let manifest: PluginManifest = serde_json::from_str(text)
         .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
 
     let id = manifest.id.trim().to_string();
@@ -172,6 +165,20 @@ fn manifest_defaults(
         .filter(|s| !s.is_empty());
 
     Ok((id, exec, functions_exec, entry))
+}
+
+fn manifest_defaults(
+    plugin_dir: &Path,
+) -> Result<(String, Option<String>, Option<String>, Option<String>), String> {
+    let manifest_path = plugin_dir.join("openvcs.plugin.json");
+    if !manifest_path.is_file() {
+        return Err(format!(
+            "missing openvcs.plugin.json at {}",
+            manifest_path.display()
+        ));
+    }
+    let text = read_to_string(&manifest_path)?;
+    parse_manifest_text(&text, &manifest_path)
 }
 
 fn unique_staging_dir(out_dir: &Path) -> PathBuf {
@@ -419,9 +426,428 @@ pub fn run_plugin_cli() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::io::Read;
+    use std::io::{Cursor, Write};
+    use std::path::PathBuf;
 
     #[test]
     fn platform_exec_filename_leaves_wasm_unchanged() {
         assert_eq!(platform_exec_filename("plugin.wasm"), "plugin.wasm");
+    }
+
+    #[test]
+    fn platform_exec_filename_trims_whitespace_and_handles_empty() {
+        assert_eq!(platform_exec_filename("  plugin.wasm  "), "plugin.wasm");
+        assert_eq!(platform_exec_filename("   "), "");
+        assert_eq!(platform_exec_filename(""), "");
+    }
+
+    #[test]
+    fn parse_args_requires_flags() {
+        let err = parse_args(vec![OsString::from("not-a-flag")]).unwrap_err();
+        assert!(err.contains("unexpected argument:"), "{err}");
+    }
+
+    #[test]
+    fn parse_args_rejects_unknown_flag() {
+        let err = parse_args(vec![OsString::from("--nope")]).unwrap_err();
+        assert_eq!(err, "unknown flag: --nope");
+    }
+
+    #[test]
+    fn parse_args_requires_flag_values() {
+        let err = parse_args(vec![OsString::from("--plugin-dir")]).unwrap_err();
+        assert_eq!(err, "missing value for --plugin-dir");
+
+        let err = parse_args(vec![OsString::from("--out")]).unwrap_err();
+        assert_eq!(err, "missing value for --out");
+    }
+
+    #[test]
+    fn parse_args_parses_plugin_dir_and_out_dir() {
+        let args = vec![
+            OsString::from("--plugin-dir"),
+            OsString::from("some/plugin"),
+            OsString::from("--out"),
+            OsString::from("some/out"),
+        ];
+        let parsed = parse_args(args).unwrap();
+        assert_eq!(parsed.plugin_dir, PathBuf::from("some/plugin"));
+        assert_eq!(parsed.out_dir, PathBuf::from("some/out"));
+    }
+
+    #[test]
+    fn parse_args_defaults_out_dir_to_dist() {
+        let args = vec![
+            OsString::from("--plugin-dir"),
+            OsString::from("some/plugin"),
+        ];
+        let parsed = parse_args(args).unwrap();
+        assert_eq!(parsed.out_dir, PathBuf::from("dist"));
+    }
+
+    #[test]
+    fn parse_args_defaults_plugin_dir_to_current_dir() {
+        let parsed = parse_args(vec![]).unwrap();
+        assert_eq!(parsed.out_dir, PathBuf::from("dist"));
+        assert_eq!(parsed.plugin_dir, env::current_dir().unwrap());
+    }
+
+    #[test]
+    fn parse_args_help_prints_usage_via_error() {
+        let err = parse_args(vec![OsString::from("--help")]).unwrap_err();
+        assert!(err.contains("openvcs-plugin [args]"), "{err}");
+    }
+
+    struct VirtualPlugin {
+        manifest_json: String,
+        root_files: BTreeMap<String, Vec<u8>>,
+        wasm_execs: BTreeMap<String, Vec<u8>>,
+    }
+
+    impl VirtualPlugin {
+        fn new(manifest_json: impl Into<String>) -> Self {
+            Self {
+                manifest_json: manifest_json.into(),
+                root_files: BTreeMap::new(),
+                wasm_execs: BTreeMap::new(),
+            }
+        }
+
+        fn add_root_file(mut self, path: &str, content: impl Into<Vec<u8>>) -> Self {
+            self.root_files.insert(path.to_string(), content.into());
+            self
+        }
+
+        fn add_wasm_exec(mut self, exec: &str, content: impl Into<Vec<u8>>) -> Self {
+            self.wasm_execs.insert(exec.to_string(), content.into());
+            self
+        }
+    }
+
+    fn virtual_bundle_zip_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8>), String> {
+        let manifest_path = PathBuf::from("<memory>/openvcs.plugin.json");
+        let (plugin_id, module_exec, functions_exec, entry) =
+            parse_manifest_text(&plugin.manifest_json, &manifest_path)?;
+
+        let has_themes = plugin
+            .root_files
+            .keys()
+            .any(|k| k == "themes" || k.starts_with("themes/"));
+        let has_wasm = module_exec.is_some() || functions_exec.is_some();
+        let has_ui_or_assets = entry.is_some() || has_themes;
+        if !has_wasm && !has_ui_or_assets {
+            return Err(
+                "manifest has no module.exec, functions.exec, entry, or themes/".to_string(),
+            );
+        }
+
+        let options: FileOptions<'_, ()> =
+            FileOptions::default().compression_method(CompressionMethod::Stored);
+        let mut cursor = Cursor::new(Vec::<u8>::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut cursor);
+            zip.start_file(format!("{plugin_id}/openvcs.plugin.json"), options)
+                .map_err(|e| format!("zip start_file failed: {e}"))?;
+            zip.write_all(plugin.manifest_json.as_bytes())
+                .map_err(|e| format!("zip write failed: {e}"))?;
+
+            for ext in ICON_EXTENSIONS {
+                let name = format!("icon.{ext}");
+                if let Some(bytes) = plugin.root_files.get(&name) {
+                    zip.start_file(format!("{plugin_id}/{name}"), options)
+                        .map_err(|e| format!("zip start_file failed: {e}"))?;
+                    zip.write_all(bytes)
+                        .map_err(|e| format!("zip write failed: {e}"))?;
+                    break;
+                }
+            }
+
+            if let Some(entry) = entry {
+                let bytes = plugin.root_files.get(&entry).ok_or_else(|| {
+                    format!(
+                        "manifest entry not found at {}",
+                        PathBuf::from("<memory>").join(&entry).display()
+                    )
+                })?;
+                zip.start_file(format!("{plugin_id}/{entry}"), options)
+                    .map_err(|e| format!("zip start_file failed: {e}"))?;
+                zip.write_all(bytes)
+                    .map_err(|e| format!("zip write failed: {e}"))?;
+            }
+
+            for (path, bytes) in &plugin.root_files {
+                if !path.starts_with("themes/") {
+                    continue;
+                }
+                zip.start_file(format!("{plugin_id}/{path}"), options)
+                    .map_err(|e| format!("zip start_file failed: {e}"))?;
+                zip.write_all(bytes)
+                    .map_err(|e| format!("zip write failed: {e}"))?;
+            }
+
+            for exec in [module_exec, functions_exec].into_iter().flatten() {
+                let exec = exec.trim().to_string();
+                if exec.is_empty() {
+                    continue;
+                }
+
+                if !exec.ends_with(".wasm") {
+                    return Err(format!(
+                        "manifest exec must end with .wasm (OpenVCS is WASM-only): {exec}"
+                    ));
+                }
+
+                let bytes = plugin.wasm_execs.get(&exec).ok_or_else(|| {
+                    format!(
+                        "built wasm not found at {} (did cargo build succeed?)",
+                        PathBuf::from("<memory>/target/wasm32-wasip1/release")
+                            .join(&exec)
+                            .display()
+                    )
+                })?;
+
+                zip.start_file(format!("{plugin_id}/bin/{exec}"), options)
+                    .map_err(|e| format!("zip start_file failed: {e}"))?;
+                zip.write_all(bytes)
+                    .map_err(|e| format!("zip write failed: {e}"))?;
+            }
+
+            zip.finish()
+                .map_err(|e| format!("zip finish failed: {e}"))?;
+        }
+
+        Ok((plugin_id, cursor.into_inner()))
+    }
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(prefix: &str) -> Self {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_micros();
+            let pid = std::process::id();
+            let path = env::temp_dir().join(format!("openvcs-sdk-tests-{prefix}-{pid}-{now}"));
+            fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn write_file(path: &Path, content: &[u8]) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn parse_manifest_text_parses_and_trims_fields() {
+        let (id, module_exec, functions_exec, entry) = parse_manifest_text(
+            r#"{
+  "id": "  my.plugin  ",
+  "entry": "  ui/index.html  ",
+  "module": { "exec": "  module.wasm  " },
+  "functions": { "exec": "  functions.wasm  " }
+}"#,
+            Path::new("<memory>/openvcs.plugin.json"),
+        )
+        .unwrap();
+        assert_eq!(id, "my.plugin");
+        assert_eq!(module_exec.as_deref(), Some("module.wasm"));
+        assert_eq!(functions_exec.as_deref(), Some("functions.wasm"));
+        assert_eq!(entry.as_deref(), Some("ui/index.html"));
+    }
+
+    #[test]
+    fn parse_manifest_text_errors_when_id_is_empty() {
+        let err = parse_manifest_text(
+            r#"{ "id": "   " }"#,
+            Path::new("<memory>/openvcs.plugin.json"),
+        )
+        .unwrap_err();
+        assert!(err.contains("missing a string 'id'"), "{err}");
+    }
+
+    #[test]
+    fn parse_manifest_text_errors_on_invalid_json_with_path_context() {
+        let err = parse_manifest_text("{", Path::new("some/path/openvcs.plugin.json")).unwrap_err();
+        assert!(
+            err.contains("parse some/path/openvcs.plugin.json:"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn parse_manifest_text_treats_whitespace_only_optional_fields_as_none() {
+        let (id, module_exec, functions_exec, entry) = parse_manifest_text(
+            r#"{ "id": "x", "entry": "   ", "module": { "exec": "   " }, "functions": { "exec": "" } }"#,
+            Path::new("<memory>/openvcs.plugin.json"),
+        )
+        .unwrap();
+        assert_eq!(id, "x");
+        assert_eq!(entry, None);
+        assert_eq!(module_exec, None);
+        assert_eq!(functions_exec, None);
+    }
+
+    #[test]
+    fn copy_dir_recursive_copies_nested_files() {
+        let tmp = TempDir::new("copy_dir_recursive");
+        let src = tmp.path.join("src");
+        let dst = tmp.path.join("dst");
+        write_file(&src.join("a.txt"), b"a");
+        write_file(&src.join("nested/b.txt"), b"b");
+
+        copy_dir_recursive(&src, &dst).unwrap();
+
+        assert_eq!(fs::read(dst.join("a.txt")).unwrap(), b"a");
+        assert_eq!(fs::read(dst.join("nested/b.txt")).unwrap(), b"b");
+    }
+
+    #[test]
+    fn virtual_bundle_packages_ui_only_plugins() {
+        let plugin = VirtualPlugin::new(
+            r#"{
+  "id": "ui-only",
+  "entry": "ui/index.html"
+}"#,
+        )
+        .add_root_file("ui/index.html", b"<html></html>")
+        .add_root_file("themes/theme.json", br#"{"name":"t"}"#)
+        .add_root_file("icon.png", b"icon");
+
+        let (plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
+        assert_eq!(plugin_id, "ui-only");
+
+        let entries = read_zip_entries_bytes(&zip_bytes);
+        assert!(entries.contains_key("ui-only/openvcs.plugin.json"));
+        assert_eq!(
+            entries.get("ui-only/ui/index.html").unwrap(),
+            b"<html></html>"
+        );
+        assert!(entries.contains_key("ui-only/themes/theme.json"));
+        assert_eq!(entries.get("ui-only/icon.png").unwrap(), b"icon");
+    }
+
+    #[test]
+    fn virtual_bundle_errors_when_manifest_has_nothing_to_bundle() {
+        let plugin = VirtualPlugin::new(r#"{ "id": "x" }"#);
+        let err = virtual_bundle_zip_bytes(&plugin).unwrap_err();
+        assert_eq!(
+            err,
+            "manifest has no module.exec, functions.exec, entry, or themes/"
+        );
+    }
+
+    #[test]
+    fn virtual_bundle_allows_themes_only_plugins() {
+        let plugin = VirtualPlugin::new(r#"{ "id": "x" }"#)
+            .add_root_file("themes/theme.json", br#"{"name":"t"}"#);
+        let (_plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
+        let entries = read_zip_entries_bytes(&zip_bytes);
+        assert!(entries.contains_key("x/openvcs.plugin.json"));
+        assert!(entries.contains_key("x/themes/theme.json"));
+    }
+
+    #[test]
+    fn virtual_bundle_rejects_non_wasm_exec() {
+        let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "not-wasm" } }"#);
+        let err = virtual_bundle_zip_bytes(&plugin).unwrap_err();
+        assert_eq!(
+            err,
+            "manifest exec must end with .wasm (OpenVCS is WASM-only): not-wasm"
+        );
+    }
+
+    #[test]
+    fn virtual_bundle_errors_when_entry_missing() {
+        let plugin = VirtualPlugin::new(r#"{ "id": "x", "entry": "ui/index.html" }"#);
+        let err = virtual_bundle_zip_bytes(&plugin).unwrap_err();
+        assert_eq!(err, "manifest entry not found at <memory>/ui/index.html");
+    }
+
+    #[test]
+    fn virtual_bundle_errors_when_wasm_missing() {
+        let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "module.wasm" } }"#);
+        let err = virtual_bundle_zip_bytes(&plugin).unwrap_err();
+        assert_eq!(
+            err,
+            "built wasm not found at <memory>/target/wasm32-wasip1/release/module.wasm (did cargo build succeed?)"
+        );
+    }
+
+    #[test]
+    fn virtual_bundle_includes_wasm_execs_in_bin() {
+        let plugin = VirtualPlugin::new(
+            r#"{ "id": "x", "module": { "exec": "module.wasm" }, "functions": { "exec": "func.wasm" } }"#,
+        )
+        .add_wasm_exec("module.wasm", b"\0asm")
+        .add_wasm_exec("func.wasm", b"\0asm2");
+
+        let (_plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
+        let entries = read_zip_entries_bytes(&zip_bytes);
+        assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"\0asm");
+        assert_eq!(entries.get("x/bin/func.wasm").unwrap(), b"\0asm2");
+    }
+
+    #[test]
+    fn virtual_bundle_trims_and_ignores_empty_exec_fields() {
+        let plugin = VirtualPlugin::new(
+            r#"{ "id": "x", "module": { "exec": "  module.wasm  " }, "functions": { "exec": "   " } }"#,
+        )
+        .add_wasm_exec("module.wasm", b"x");
+
+        let (_plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
+        let entries = read_zip_entries_bytes(&zip_bytes);
+        assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"x");
+        assert_eq!(entries.contains_key("x/bin/   "), false);
+    }
+
+    #[test]
+    fn virtual_bundle_prefers_icon_extension_order() {
+        let plugin = VirtualPlugin::new(r#"{ "id": "x", "entry": "ui/index.html" }"#)
+            .add_root_file("ui/index.html", b"x")
+            .add_root_file("icon.jpg", b"jpg")
+            .add_root_file("icon.png", b"png");
+
+        let (_plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
+        let entries = read_zip_entries_bytes(&zip_bytes);
+        assert_eq!(entries.get("x/icon.png").unwrap(), b"png");
+        assert!(!entries.contains_key("x/icon.jpg"));
+    }
+
+    fn read_zip_entries_bytes(zip_bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
+        let cursor = Cursor::new(zip_bytes);
+        let mut zip = zip::ZipArchive::new(cursor).unwrap();
+        let mut out = BTreeMap::new();
+        for i in 0..zip.len() {
+            let mut file = zip.by_index(i).unwrap();
+            let name = file.name().to_string();
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).unwrap();
+            out.insert(name, buf);
+        }
+        out
+    }
+
+    #[test]
+    fn manifest_defaults_errors_when_missing_manifest() {
+        let tmp = TempDir::new("manifest_defaults_missing_manifest");
+        let plugin_dir = tmp.path.join("plugin");
+        fs::create_dir_all(&plugin_dir).unwrap();
+        let err = manifest_defaults(&plugin_dir).unwrap_err();
+        assert!(err.contains("missing openvcs.plugin.json"), "{err}");
     }
 }
