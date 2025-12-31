@@ -21,6 +21,9 @@ pub struct PluginBuildArgs {
     pub out_dir: PathBuf,
 }
 
+// Reduce clippy type complexity warnings for manifest parsing results.
+type ManifestResult = Result<(String, Option<String>, Option<String>, Option<String>), String>;
+
 fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
     if args.is_empty() {
         return Err(format!("missing value for {flag}"));
@@ -127,10 +130,7 @@ struct PluginManifest {
     functions: Option<PluginManifestFunctions>,
 }
 
-fn parse_manifest_text(
-    text: &str,
-    manifest_path: &Path,
-) -> Result<(String, Option<String>, Option<String>, Option<String>), String> {
+fn parse_manifest_text(text: &str, manifest_path: &Path) -> ManifestResult {
     let manifest: PluginManifest = serde_json::from_str(text)
         .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
 
@@ -162,9 +162,7 @@ fn parse_manifest_text(
     Ok((id, exec, functions_exec, entry))
 }
 
-fn manifest_defaults(
-    plugin_dir: &Path,
-) -> Result<(String, Option<String>, Option<String>, Option<String>), String> {
+fn manifest_defaults(plugin_dir: &Path) -> ManifestResult {
     let manifest_path = plugin_dir.join("openvcs.plugin.json");
     if !manifest_path.is_file() {
         return Err(format!(

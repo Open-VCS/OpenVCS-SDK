@@ -2,7 +2,7 @@ use openvcs_sdk::dist::{PluginBuildArgs, bundle_plugin};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 fn print_usage() {
@@ -21,15 +21,15 @@ Options:
     );
 }
 
-fn is_plugin_dir(dir: &PathBuf) -> bool {
+fn is_plugin_dir(dir: &Path) -> bool {
     dir.join("openvcs.plugin.json").is_file()
 }
 
-fn is_rust_plugin_dir(dir: &PathBuf) -> bool {
+fn is_rust_plugin_dir(dir: &Path) -> bool {
     dir.join("Cargo.toml").is_file()
 }
 
-fn discover_plugin_dirs(root: &PathBuf) -> Result<Vec<PathBuf>, String> {
+fn discover_plugin_dirs(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     for entry in fs::read_dir(root).map_err(|e| format!("read_dir {}: {e}", root.display()))? {
         let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
@@ -37,7 +37,7 @@ fn discover_plugin_dirs(root: &PathBuf) -> Result<Vec<PathBuf>, String> {
         if !path.is_dir() {
             continue;
         }
-        if is_plugin_dir(&path) {
+        if is_plugin_dir(path.as_path()) {
             out.push(path);
         }
     }
@@ -45,7 +45,7 @@ fn discover_plugin_dirs(root: &PathBuf) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
-fn run_cargo_fix(dir: &PathBuf) -> Result<(), String> {
+fn run_cargo_fix(dir: &Path) -> Result<(), String> {
     let mut cmd = std::process::Command::new("cargo");
     cmd.current_dir(dir);
     cmd.arg("fix");
