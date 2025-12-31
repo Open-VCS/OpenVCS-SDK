@@ -43,6 +43,10 @@
 - Open PRs against the `Dev` branch; keep `Stable` for releases.
 - PRs should include: a brief description of behavior changes, how you tested (`cargo test`, bundling command used), and any linked issue(s).
 
+- Agents / automation: allowed to create or amend local commits and branches (for example, `git commit`, `git commit --amend`, and creating topic branches), but MUST NOT push commits to the remote or open pull requests.
+  - When an agent prepares changes, it should run the project's fixer command `just fix` (agents MUST NOT run `cargo fmt` or `cargo clippy` manually), create a descriptive commit, and then notify a human reviewer who will push the branch and open the PR.
+  - CI or other trusted automation that has been explicitly approved in project policy may be exempted; otherwise treat pushing as a human action.
+
 ## Packaging Notes (WASI)
 
 - Plugins are built for WASI targets (`wasm32-wasip1` first, with a fallback to `wasm32-wasi`).
