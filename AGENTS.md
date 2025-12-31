@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 - `src/lib.rs`: Rust library crate (`openvcs-sdk`), currently exporting `openvcs_sdk::dist`.
-- `src/dist.rs`: Core packaging/bundling logic (reads `openvcs.plugin.json`, builds WASI binaries, writes `.ovcsp` zip bundles).
+- `src/dist.rs`: Core packaging/bundling logic (reads `openvcs.plugin.json`, builds WASI binaries, writes `.ovcsp` tar.xz bundles).
 - `src/main.rs`: `openvcs-plugin` binary entrypoint (plugin bundler CLI).
 - `src/bin/cargo-openvcs.rs`: `cargo-openvcs` binary (`cargo openvcs dist ...`) convenience wrapper.
 - `dist/`: local output directory for bundles and staging (gitignored).

@@ -2,14 +2,9 @@ use serde::Deserialize;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::io;
-use std::io::Read;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
-use zip::CompressionMethod;
-use zip::write::FileOptions;
 
 fn usage() -> &'static str {
     "openvcs-plugin [args]\n\
@@ -17,7 +12,7 @@ fn usage() -> &'static str {
   --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n\
   --out <path>          Output directory (default: ./dist)\n\
 \n\
-Builds plugin executables and packages them into a single `.ovcsp` zip.\n"
+Builds plugin executables and packages them into a single `.ovcsp` tar.xz.\n"
 }
 
 #[derive(Debug)]
@@ -191,58 +186,41 @@ fn unique_staging_dir(out_dir: &Path) -> PathBuf {
 
 const ICON_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "avif", "svg"];
 
-fn zip_dir(zip_path: &Path, base_dir: &Path, folder_name: &str) -> Result<(), String> {
-    let root = base_dir.join(folder_name);
-    write_zip(zip_path, base_dir, &root)
-}
-
-fn collect_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
-    let entries = fs::read_dir(dir)?;
-    for entry in entries.flatten() {
+fn reject_symlinks_recursive(dir: &Path) -> Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
         let path = entry.path();
-        if path.is_dir() {
-            collect_files_recursive(&path, out)?;
-        } else if path.is_file() {
-            out.push(path);
+        let meta = fs::symlink_metadata(&path)
+            .map_err(|e| format!("metadata {}: {e}", path.display()))?;
+        if meta.file_type().is_symlink() {
+            return Err(format!("plugin contains a symlink: {}", path.display()));
+        }
+        if meta.is_dir() {
+            reject_symlinks_recursive(&path)?;
         }
     }
     Ok(())
 }
 
-fn path_to_zip_name(base_dir: &Path, path: &Path) -> Result<String, String> {
-    let rel = path
-        .strip_prefix(base_dir)
-        .map_err(|e| format!("zip path error for {}: {e}", path.display()))?;
-    let s = rel.to_string_lossy().replace('\\', "/");
-    Ok(s)
-}
+fn write_tar_xz(out_path: &Path, base_dir: &Path, folder_name: &str) -> Result<(), String> {
+    let root = base_dir.join(folder_name);
+    reject_symlinks_recursive(&root)?;
 
-fn write_zip(zip_path: &Path, base_dir: &Path, root: &Path) -> Result<(), String> {
-    let mut files: Vec<PathBuf> = Vec::new();
-    collect_files_recursive(root, &mut files)
-        .map_err(|e| format!("failed to list {}: {e}", root.display()))?;
-    files.sort();
+    let out = fs::File::create(out_path)
+        .map_err(|e| format!("failed to create {}: {e}", out_path.display()))?;
+    let encoder = xz2::write::XzEncoder::new(out, 6);
+    let mut builder = tar::Builder::new(encoder);
+    builder
+        .append_dir_all(folder_name, &root)
+        .map_err(|e| format!("tar append_dir_all failed: {e}"))?;
 
-    let out = fs::File::create(zip_path)
-        .map_err(|e| format!("failed to create {}: {e}", zip_path.display()))?;
-    let mut zip = zip::ZipWriter::new(out);
-    let options: FileOptions<'_, ()> =
-        FileOptions::default().compression_method(CompressionMethod::Stored);
-
-    for path in files {
-        let zip_name = path_to_zip_name(base_dir, &path)?;
-        zip.start_file(zip_name, options)
-            .map_err(|e| format!("zip start_file failed: {e}"))?;
-        let mut f = fs::File::open(&path).map_err(|e| format!("open {}: {e}", path.display()))?;
-        let mut buf = Vec::new();
-        f.read_to_end(&mut buf)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
-        zip.write_all(&buf)
-            .map_err(|e| format!("zip write failed: {e}"))?;
-    }
-
-    zip.finish()
-        .map_err(|e| format!("zip finish failed: {e}"))?;
+    let encoder = builder
+        .into_inner()
+        .map_err(|e| format!("tar finish failed: {e}"))?;
+    encoder
+        .finish()
+        .map_err(|e| format!("xz finish failed: {e}"))?;
     Ok(())
 }
 
@@ -392,7 +370,7 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
         fs::remove_file(&out_path)
             .map_err(|e| format!("failed to remove existing {}: {e}", out_path.display()))?;
     }
-    zip_dir(&out_path, &staging_root, &plugin_id)?;
+    write_tar_xz(&out_path, &staging_root, &plugin_id)?;
 
     let _ = fs::remove_dir_all(&staging_root);
 
@@ -429,7 +407,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::io::Read;
-    use std::io::{Cursor, Write};
+    use std::io::Cursor;
     use std::path::PathBuf;
 
     #[test]
@@ -527,7 +505,7 @@ mod tests {
         }
     }
 
-    fn virtual_bundle_zip_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8>), String> {
+    fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8>), String> {
         let manifest_path = PathBuf::from("<memory>/openvcs.plugin.json");
         let (plugin_id, module_exec, functions_exec, entry) =
             parse_manifest_text(&plugin.manifest_json, &manifest_path)?;
@@ -544,80 +522,90 @@ mod tests {
             );
         }
 
-        let options: FileOptions<'_, ()> =
-            FileOptions::default().compression_method(CompressionMethod::Stored);
-        let mut cursor = Cursor::new(Vec::<u8>::new());
+        let cursor = Cursor::new(Vec::<u8>::new());
+        let encoder = xz2::write::XzEncoder::new(cursor, 6);
+        let mut tar = tar::Builder::new(encoder);
+
         {
-            let mut zip = zip::ZipWriter::new(&mut cursor);
-            zip.start_file(format!("{plugin_id}/openvcs.plugin.json"), options)
-                .map_err(|e| format!("zip start_file failed: {e}"))?;
-            zip.write_all(plugin.manifest_json.as_bytes())
-                .map_err(|e| format!("zip write failed: {e}"))?;
-
-            for ext in ICON_EXTENSIONS {
-                let name = format!("icon.{ext}");
-                if let Some(bytes) = plugin.root_files.get(&name) {
-                    zip.start_file(format!("{plugin_id}/{name}"), options)
-                        .map_err(|e| format!("zip start_file failed: {e}"))?;
-                    zip.write_all(bytes)
-                        .map_err(|e| format!("zip write failed: {e}"))?;
-                    break;
-                }
-            }
-
-            if let Some(entry) = entry {
-                let bytes = plugin.root_files.get(&entry).ok_or_else(|| {
-                    format!(
-                        "manifest entry not found at {}",
-                        PathBuf::from("<memory>").join(&entry).display()
-                    )
-                })?;
-                zip.start_file(format!("{plugin_id}/{entry}"), options)
-                    .map_err(|e| format!("zip start_file failed: {e}"))?;
-                zip.write_all(bytes)
-                    .map_err(|e| format!("zip write failed: {e}"))?;
-            }
-
-            for (path, bytes) in &plugin.root_files {
-                if !path.starts_with("themes/") {
-                    continue;
-                }
-                zip.start_file(format!("{plugin_id}/{path}"), options)
-                    .map_err(|e| format!("zip start_file failed: {e}"))?;
-                zip.write_all(bytes)
-                    .map_err(|e| format!("zip write failed: {e}"))?;
-            }
-
-            for exec in [module_exec, functions_exec].into_iter().flatten() {
-                let exec = exec.trim().to_string();
-                if exec.is_empty() {
-                    continue;
-                }
-
-                if !exec.ends_with(".wasm") {
-                    return Err(format!(
-                        "manifest exec must end with .wasm (OpenVCS is WASM-only): {exec}"
-                    ));
-                }
-
-                let bytes = plugin.wasm_execs.get(&exec).ok_or_else(|| {
-                    format!(
-                        "built wasm not found at {} (did cargo build succeed?)",
-                        PathBuf::from("<memory>/target/wasm32-wasip1/release")
-                            .join(&exec)
-                            .display()
-                    )
-                })?;
-
-                zip.start_file(format!("{plugin_id}/bin/{exec}"), options)
-                    .map_err(|e| format!("zip start_file failed: {e}"))?;
-                zip.write_all(bytes)
-                    .map_err(|e| format!("zip write failed: {e}"))?;
-            }
-
-            zip.finish()
-                .map_err(|e| format!("zip finish failed: {e}"))?;
+            let mut header = tar::Header::new_gnu();
+            let bytes = plugin.manifest_json.as_bytes();
+            header.set_size(bytes.len() as u64);
+            header.set_cksum();
+            tar.append_data(&mut header, format!("{plugin_id}/openvcs.plugin.json"), bytes)
+                .map_err(|e| format!("tar append manifest failed: {e}"))?;
         }
+
+        for ext in ICON_EXTENSIONS {
+            let name = format!("icon.{ext}");
+            if let Some(bytes) = plugin.root_files.get(&name) {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(bytes.len() as u64);
+                header.set_cksum();
+                tar.append_data(&mut header, format!("{plugin_id}/{name}"), bytes.as_slice())
+                    .map_err(|e| format!("tar append icon failed: {e}"))?;
+                break;
+            }
+        }
+
+        if let Some(entry) = entry {
+            let bytes = plugin.root_files.get(&entry).ok_or_else(|| {
+                format!(
+                    "manifest entry not found at {}",
+                    PathBuf::from("<memory>").join(&entry).display()
+                )
+            })?;
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_cksum();
+            tar.append_data(&mut header, format!("{plugin_id}/{entry}"), bytes.as_slice())
+                .map_err(|e| format!("tar append entry failed: {e}"))?;
+        }
+
+        for (path, bytes) in &plugin.root_files {
+            if !path.starts_with("themes/") {
+                continue;
+            }
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_cksum();
+            tar.append_data(&mut header, format!("{plugin_id}/{path}"), bytes.as_slice())
+                .map_err(|e| format!("tar append theme failed: {e}"))?;
+        }
+
+        for exec in [module_exec, functions_exec].into_iter().flatten() {
+            let exec = exec.trim().to_string();
+            if exec.is_empty() {
+                continue;
+            }
+
+            if !exec.ends_with(".wasm") {
+                return Err(format!(
+                    "manifest exec must end with .wasm (OpenVCS is WASM-only): {exec}"
+                ));
+            }
+
+            let bytes = plugin.wasm_execs.get(&exec).ok_or_else(|| {
+                format!(
+                    "built wasm not found at {} (did cargo build succeed?)",
+                    PathBuf::from("<memory>/target/wasm32-wasip1/release")
+                        .join(&exec)
+                        .display()
+                )
+            })?;
+
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_cksum();
+            tar.append_data(&mut header, format!("{plugin_id}/bin/{exec}"), bytes.as_slice())
+                .map_err(|e| format!("tar append wasm failed: {e}"))?;
+        }
+
+        let encoder = tar
+            .into_inner()
+            .map_err(|e| format!("tar finish failed: {e}"))?;
+        let cursor = encoder
+            .finish()
+            .map_err(|e| format!("xz finish failed: {e}"))?;
 
         Ok((plugin_id, cursor.into_inner()))
     }
@@ -728,10 +716,10 @@ mod tests {
         .add_root_file("themes/theme.json", br#"{"name":"t"}"#)
         .add_root_file("icon.png", b"icon");
 
-        let (plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
+        let (plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
         assert_eq!(plugin_id, "ui-only");
 
-        let entries = read_zip_entries_bytes(&zip_bytes);
+        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
         assert!(entries.contains_key("ui-only/openvcs.plugin.json"));
         assert_eq!(
             entries.get("ui-only/ui/index.html").unwrap(),
@@ -744,7 +732,7 @@ mod tests {
     #[test]
     fn virtual_bundle_errors_when_manifest_has_nothing_to_bundle() {
         let plugin = VirtualPlugin::new(r#"{ "id": "x" }"#);
-        let err = virtual_bundle_zip_bytes(&plugin).unwrap_err();
+        let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
         assert_eq!(
             err,
             "manifest has no module.exec, functions.exec, entry, or themes/"
@@ -755,8 +743,8 @@ mod tests {
     fn virtual_bundle_allows_themes_only_plugins() {
         let plugin = VirtualPlugin::new(r#"{ "id": "x" }"#)
             .add_root_file("themes/theme.json", br#"{"name":"t"}"#);
-        let (_plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
-        let entries = read_zip_entries_bytes(&zip_bytes);
+        let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
+        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
         assert!(entries.contains_key("x/openvcs.plugin.json"));
         assert!(entries.contains_key("x/themes/theme.json"));
     }
@@ -764,7 +752,7 @@ mod tests {
     #[test]
     fn virtual_bundle_rejects_non_wasm_exec() {
         let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "not-wasm" } }"#);
-        let err = virtual_bundle_zip_bytes(&plugin).unwrap_err();
+        let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
         assert_eq!(
             err,
             "manifest exec must end with .wasm (OpenVCS is WASM-only): not-wasm"
@@ -774,14 +762,14 @@ mod tests {
     #[test]
     fn virtual_bundle_errors_when_entry_missing() {
         let plugin = VirtualPlugin::new(r#"{ "id": "x", "entry": "ui/index.html" }"#);
-        let err = virtual_bundle_zip_bytes(&plugin).unwrap_err();
+        let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
         assert_eq!(err, "manifest entry not found at <memory>/ui/index.html");
     }
 
     #[test]
     fn virtual_bundle_errors_when_wasm_missing() {
         let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "module.wasm" } }"#);
-        let err = virtual_bundle_zip_bytes(&plugin).unwrap_err();
+        let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
         assert_eq!(
             err,
             "built wasm not found at <memory>/target/wasm32-wasip1/release/module.wasm (did cargo build succeed?)"
@@ -796,8 +784,8 @@ mod tests {
         .add_wasm_exec("module.wasm", b"\0asm")
         .add_wasm_exec("func.wasm", b"\0asm2");
 
-        let (_plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
-        let entries = read_zip_entries_bytes(&zip_bytes);
+        let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
+        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
         assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"\0asm");
         assert_eq!(entries.get("x/bin/func.wasm").unwrap(), b"\0asm2");
     }
@@ -809,8 +797,8 @@ mod tests {
         )
         .add_wasm_exec("module.wasm", b"x");
 
-        let (_plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
-        let entries = read_zip_entries_bytes(&zip_bytes);
+        let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
+        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
         assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"x");
         assert_eq!(entries.contains_key("x/bin/   "), false);
     }
@@ -822,21 +810,25 @@ mod tests {
             .add_root_file("icon.jpg", b"jpg")
             .add_root_file("icon.png", b"png");
 
-        let (_plugin_id, zip_bytes) = virtual_bundle_zip_bytes(&plugin).unwrap();
-        let entries = read_zip_entries_bytes(&zip_bytes);
+        let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
+        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
         assert_eq!(entries.get("x/icon.png").unwrap(), b"png");
         assert!(!entries.contains_key("x/icon.jpg"));
     }
 
-    fn read_zip_entries_bytes(zip_bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
-        let cursor = Cursor::new(zip_bytes);
-        let mut zip = zip::ZipArchive::new(cursor).unwrap();
+    fn read_tar_xz_entries_bytes(bundle_bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
+        let cursor = Cursor::new(bundle_bytes);
+        let decoder = xz2::read::XzDecoder::new(cursor);
+        let mut tar = tar::Archive::new(decoder);
         let mut out = BTreeMap::new();
-        for i in 0..zip.len() {
-            let mut file = zip.by_index(i).unwrap();
-            let name = file.name().to_string();
+        for entry in tar.entries().unwrap() {
+            let mut entry = entry.unwrap();
+            if !entry.header().entry_type().is_file() {
+                continue;
+            }
+            let name = entry.path().unwrap().to_string_lossy().to_string();
             let mut buf = Vec::new();
-            file.read_to_end(&mut buf).unwrap();
+            entry.read_to_end(&mut buf).unwrap();
             out.insert(name, buf);
         }
         out
