@@ -4,9 +4,23 @@ version = "0.1.5"
 edition = "2024"
 description = "SDK for building/bundling OpenVCS plugins and packaging them as .ovcsp bundles."
 license = "GPL-3.0-or-later"
-homepage = "https://openvcs.dev/"
+homepage = "https://bbgames.dev/"
 repository = "https://github.com/Open-VCS/OpenVCS-SDK"
 readme = "README.md"
+
+keywords = [
+    "openvcs",
+    "sdk",
+    "plugin",
+    "wasi",
+    "wasm"
+]
+
+categories = [
+    "command-line-utilities",
+    "development-tools::build-utils",
+    "wasm"
+]
 
 [[bin]]
 name = "openvcs-plugin"
