@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -93,6 +94,21 @@ fn built_wasm_bin_path(plugin_dir: &Path, target: &str, bin: &str) -> PathBuf {
     p.push("release");
     p.push(format!("{bin}.wasm"));
     p
+}
+
+fn ensure_wasm_magic(path: &Path) -> Result<(), String> {
+    let mut f = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let mut magic = [0u8; 4];
+    let n = f
+        .read(&mut magic)
+        .map_err(|e| format!("read {}: {e}", path.display()))?;
+    if n < magic.len() || magic != [0x00, 0x61, 0x73, 0x6d] {
+        return Err(format!(
+            "built exec is not a wasm module (WASM-only plugins): {}",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 fn platform_exec_filename(exec: &str) -> String {
@@ -353,6 +369,7 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
                 bin_src.display()
             ));
         }
+        ensure_wasm_magic(&bin_src)?;
         let bin_dst = bin_dir.join(platform_exec_filename(&exec));
         fs::copy(&bin_src, &bin_dst).map_err(|e| {
             format!(
