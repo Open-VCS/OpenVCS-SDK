@@ -71,8 +71,38 @@ fn run_status(mut cmd: Command) -> Result<(), String> {
     }
 }
 
+fn rustc_target_list() -> Option<Vec<String>> {
+    let out = Command::new("rustc").args(["--print", "target-list"]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout);
+    Some(
+        s.lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect(),
+    )
+}
+
 fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<String, String> {
-    for target in ["wasm32-wasip1", "wasm32-wasi"] {
+    let available = rustc_target_list().unwrap_or_default();
+    let supports_wasip1 = available.is_empty() || available.iter().any(|t| t == "wasm32-wasip1");
+    let supports_legacy = available.is_empty() || available.iter().any(|t| t == "wasm32-wasi");
+
+    let mut targets: Vec<&str> = Vec::new();
+    if supports_wasip1 {
+        targets.push("wasm32-wasip1");
+    }
+    if supports_legacy {
+        targets.push("wasm32-wasi");
+    }
+    if targets.is_empty() {
+        return Err("no supported WASI targets found (expected wasm32-wasip1)".to_string());
+    }
+
+    for target in targets {
         let mut cmd = Command::new("cargo");
         cmd.current_dir(plugin_dir);
         cmd.arg("build");
