@@ -65,11 +65,11 @@ jobs:
             echo "ahead_count=$AHEAD" >> "$GITHUB_OUTPUT"
           fi
 
-  build:
-    name: Build (${{ matrix.os }})
+  build-linux-windows:
+    name: Build (Linux + Windows)
     needs: check-changes
     if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: write
@@ -77,68 +77,124 @@ jobs:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
       SCCACHE_CACHE_SIZE: '2G'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-latest, windows-latest]
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
+      CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
+      CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
     steps:
       - name: Checkout target ref
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ env.TARGET_REF }}
           fetch-depth: 0
 
       - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
+        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6
         with:
           toolchain: stable
           components: rustfmt, clippy
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
+
+      - name: Install cross-tooling
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 zip
+
+      - name: Add Windows target
+        run: rustup target add x86_64-pc-windows-gnu
 
       - name: Cargo fmt (check)
-        if: runner.os == 'Linux'
         run: cargo fmt --all -- --check
 
       - name: Cargo clippy
-        if: runner.os == 'Linux'
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Build
+      - name: Build Linux
         run: cargo build --release
 
-      - name: Package (unix)
-        if: runner.os != 'Windows'
+      - name: Build Windows
+        run: cargo build --release --target x86_64-pc-windows-gnu
+
+      - name: Package Linux
         run: |
           set -euo pipefail
           ARCH="$(uname -m)"
           mkdir -p dist
-          cp target/release/openvcs-plugin "dist/openvcs-plugin-${{ runner.os }}-${ARCH}"
-          tar -C dist -czf "openvcs-plugin-${{ runner.os }}-${ARCH}.tar.gz" "openvcs-plugin-${{ runner.os }}-${ARCH}"
+          cp target/release/openvcs-plugin "dist/openvcs-plugin-Linux-${ARCH}"
+          tar -C dist -czf "openvcs-plugin-Linux-${ARCH}.tar.gz" "openvcs-plugin-Linux-${ARCH}"
 
-      - name: Package (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Package Windows
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target\\release\\openvcs-plugin.exe dist\\openvcs-plugin-Windows-x86_64.exe -Force
-          Compress-Archive -Path dist\\openvcs-plugin-Windows-x86_64.exe -DestinationPath openvcs-plugin-Windows-x86_64.zip -Force
+          set -euo pipefail
+          mkdir -p dist
+          cp target/x86_64-pc-windows-gnu/release/openvcs-plugin.exe dist/openvcs-plugin-Windows-x86_64.exe
+          (cd dist && zip -r openvcs-plugin-Windows-x86_64.zip openvcs-plugin-Windows-x86_64.exe)
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: sdk-nightly-${{ runner.os }}
-          path: |
-            openvcs-plugin-*.tar.gz
-            openvcs-plugin-*.zip
+          name: sdk-linux-windows
+          path: dist
+
+  build-macos:
+    name: Build (macOS)
+    needs: check-changes
+    if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
+    runs-on: macos-latest
+    permissions:
+      contents: read
+      actions: write
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_CACHE_SIZE: '2G'
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_REF }}
+          fetch-depth: 0
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
+
+      - name: Cargo fmt (check)
+        run: cargo fmt --all -- --check
+
+      - name: Cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build macOS
+        run: cargo build --release
+
+      - name: Package macOS
+        run: |
+          set -euo pipefail
+          ARCH="$(uname -m)"
+          mkdir -p dist
+          cp target/release/openvcs-plugin "dist/openvcs-plugin-macos-${ARCH}"
+          tar -C dist -czf "openvcs-plugin-macos-${ARCH}.tar.gz" "openvcs-plugin-macos-${ARCH}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: sdk-macos
+          path: dist
 
   release:
     name: Publish rolling nightly prerelease
-    needs: [check-changes, build]
+    needs: [check-changes, build-linux-windows, build-macos]
     if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
     runs-on: ubuntu-24.04
     permissions:
