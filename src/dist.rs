@@ -103,10 +103,17 @@ fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<String, String> {
     }
 
     for target in targets {
+        let manifest_path = plugin_dir.join("Cargo.toml");
+        let target_dir = plugin_dir.join("target");
         let mut cmd = Command::new("cargo");
         cmd.current_dir(plugin_dir);
         cmd.arg("build");
         cmd.arg("--release");
+        cmd.arg("--locked");
+        cmd.arg("--manifest-path");
+        cmd.arg(&manifest_path);
+        cmd.arg("--target-dir");
+        cmd.arg(&target_dir);
         cmd.args(["--bin", bin]);
         cmd.args(["--target", target]);
         match run_status(cmd) {
