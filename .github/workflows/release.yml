@@ -80,19 +80,25 @@ jobs:
           mkdir -p dist
           cp target/release/openvcs-plugin "dist/openvcs-plugin-Linux-${ARCH}"
           tar -C dist -czf "openvcs-plugin-Linux-${ARCH}.tar.gz" "openvcs-plugin-Linux-${ARCH}"
+          rm "dist/openvcs-plugin-Linux-${ARCH}"
+          rmdir dist
 
       - name: Package Windows
         run: |
           set -euo pipefail
           mkdir -p dist
           cp target/x86_64-pc-windows-gnu/release/openvcs-plugin.exe dist/openvcs-plugin-Windows-x86_64.exe
-          (cd dist && zip -r openvcs-plugin-Windows-x86_64.zip openvcs-plugin-Windows-x86_64.exe)
+          zip -j openvcs-plugin-Windows-x86_64.zip dist/openvcs-plugin-Windows-x86_64.exe
+          rm dist/openvcs-plugin-Windows-x86_64.exe
+          rmdir dist
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
           name: sdk-linux-windows
-          path: dist
+          path: |
+            openvcs-plugin-Linux-*.tar.gz
+            openvcs-plugin-Windows-*.zip
 
   build-macos:
     name: Build (macOS)
@@ -138,12 +144,14 @@ jobs:
           mkdir -p dist
           cp target/release/openvcs-plugin "dist/openvcs-plugin-macos-${ARCH}"
           tar -C dist -czf "openvcs-plugin-macos-${ARCH}.tar.gz" "openvcs-plugin-macos-${ARCH}"
+          rm "dist/openvcs-plugin-macos-${ARCH}"
+          rmdir dist
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
           name: sdk-macos
-          path: dist
+          path: openvcs-plugin-macos-*.tar.gz
 
   release:
     name: Create GitHub Release
