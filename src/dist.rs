@@ -25,6 +25,11 @@ pub struct PluginBuildArgs {
 // Reduce clippy type complexity warnings for manifest parsing results.
 type ManifestResult = Result<(String, Option<String>, Option<String>, Option<String>), String>;
 
+#[derive(Debug, Deserialize)]
+struct CargoMetadata {
+    target_directory: PathBuf,
+}
+
 fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
     if args.is_empty() {
         return Err(format!("missing value for {flag}"));
@@ -89,7 +94,29 @@ fn rustc_target_list() -> Option<Vec<String>> {
     )
 }
 
-fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<String, String> {
+fn resolve_target_dir(plugin_dir: &Path) -> PathBuf {
+    let manifest_path = plugin_dir.join("Cargo.toml");
+    let output = Command::new("cargo")
+        .arg("metadata")
+        .arg("--format-version")
+        .arg("1")
+        .arg("--no-deps")
+        .arg("--manifest-path")
+        .arg(&manifest_path)
+        .output();
+
+    let output = match output {
+        Ok(output) if output.status.success() => output,
+        _ => return plugin_dir.join("target"),
+    };
+
+    match serde_json::from_slice::<CargoMetadata>(&output.stdout) {
+        Ok(metadata) => metadata.target_directory,
+        Err(_) => plugin_dir.join("target"),
+    }
+}
+
+fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<String, String> {
     let available = rustc_target_list().unwrap_or_default();
     let supports_wasip1 = available.is_empty() || available.iter().any(|t| t == "wasm32-wasip1");
     let supports_legacy = available.is_empty() || available.iter().any(|t| t == "wasm32-wasi");
@@ -107,7 +134,6 @@ fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<String, String> {
 
     for target in targets {
         let manifest_path = plugin_dir.join("Cargo.toml");
-        let target_dir = plugin_dir.join("target");
         let mut cmd = Command::new("cargo");
         cmd.current_dir(plugin_dir);
         cmd.arg("build");
@@ -116,7 +142,7 @@ fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<String, String> {
         cmd.arg("--manifest-path");
         cmd.arg(&manifest_path);
         cmd.arg("--target-dir");
-        cmd.arg(&target_dir);
+        cmd.arg(target_dir);
         cmd.args(["--bin", bin]);
         cmd.args(["--target", target]);
         match run_status(cmd) {
@@ -127,9 +153,8 @@ fn build_plugin_wasi(plugin_dir: &Path, bin: &str) -> Result<String, String> {
     Err("failed to build plugin for wasm32-wasip1 or wasm32-wasi".to_string())
 }
 
-fn built_wasm_bin_path(plugin_dir: &Path, target: &str, bin: &str) -> PathBuf {
-    let mut p = plugin_dir.to_path_buf();
-    p.push("target");
+fn built_wasm_bin_path(target_dir: &Path, target: &str, bin: &str) -> PathBuf {
+    let mut p = target_dir.to_path_buf();
     p.push(target);
     p.push("release");
     p.push(format!("{bin}.wasm"));
@@ -385,6 +410,8 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
         copy_dir_recursive(&themes_src, &bundle_dir.join("themes"))?;
     }
 
+    let target_dir = resolve_target_dir(&args.plugin_dir);
+
     for exec in [module_exec, functions_exec].into_iter().flatten() {
         let exec = exec.trim().to_string();
         if exec.is_empty() {
@@ -401,8 +428,8 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
             .strip_suffix(".wasm")
             .ok_or_else(|| format!("invalid wasm exec: {exec}"))?
             .to_string();
-        let target = build_plugin_wasi(&args.plugin_dir, &bin)?;
-        let bin_src = built_wasm_bin_path(&args.plugin_dir, &target, &bin);
+        let target = build_plugin_wasi(&args.plugin_dir, &target_dir, &bin)?;
+        let bin_src = built_wasm_bin_path(&target_dir, &target, &bin);
         if !bin_src.is_file() {
             return Err(format!(
                 "built wasm not found at {} (did cargo build succeed?)",
@@ -908,5 +935,28 @@ mod tests {
         fs::create_dir_all(&plugin_dir).unwrap();
         let err = manifest_defaults(&plugin_dir).unwrap_err();
         assert!(err.contains("missing openvcs.plugin.json"), "{err}");
+    }
+
+    #[test]
+    fn resolve_target_dir_parses_metadata_target_directory() {
+        let metadata = br#"{"target_directory":"/tmp/openvcs-target"}"#;
+        let parsed: CargoMetadata = serde_json::from_slice(metadata).unwrap();
+        assert_eq!(
+            parsed.target_directory,
+            PathBuf::from("/tmp/openvcs-target")
+        );
+    }
+
+    #[test]
+    fn built_wasm_bin_path_uses_resolved_target_directory() {
+        let path = built_wasm_bin_path(
+            Path::new("/tmp/workspace-target"),
+            "wasm32-wasip1",
+            "openvcs-git-plugin",
+        );
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/workspace-target/wasm32-wasip1/release/openvcs-git-plugin.wasm")
+        );
     }
 }
