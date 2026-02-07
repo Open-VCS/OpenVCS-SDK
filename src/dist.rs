@@ -138,7 +138,6 @@ fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<
         cmd.current_dir(plugin_dir);
         cmd.arg("build");
         cmd.arg("--release");
-        cmd.arg("--locked");
         cmd.arg("--manifest-path");
         cmd.arg(&manifest_path);
         cmd.arg("--target-dir");
