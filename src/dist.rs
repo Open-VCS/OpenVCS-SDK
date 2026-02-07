@@ -72,7 +72,10 @@ fn run_status(mut cmd: Command) -> Result<(), String> {
 }
 
 fn rustc_target_list() -> Option<Vec<String>> {
-    let out = Command::new("rustc").args(["--print", "target-list"]).output().ok()?;
+    let out = Command::new("rustc")
+        .args(["--print", "target-list"])
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }
