@@ -23,7 +23,7 @@ pub struct PluginBuildArgs {
 }
 
 // Reduce clippy type complexity warnings for manifest parsing results.
-type ManifestResult = Result<(String, Option<String>, Option<String>, Option<String>), String>;
+type ManifestResult = Result<(String, Option<String>, Option<String>), String>;
 
 #[derive(Debug, Deserialize)]
 struct CargoMetadata {
@@ -203,15 +203,22 @@ struct PluginManifestFunctions {
 struct PluginManifest {
     id: String,
     #[serde(default)]
-    entry: Option<String>,
-    #[serde(default)]
     module: Option<PluginManifestModule>,
     #[serde(default)]
     functions: Option<PluginManifestFunctions>,
 }
 
 fn parse_manifest_text(text: &str, manifest_path: &Path) -> ManifestResult {
-    let manifest: PluginManifest = serde_json::from_str(text)
+    let value: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
+    if value.get("entry").is_some() {
+        return Err(format!(
+            "manifest {} uses unsupported field 'entry'; plugin UI must be defined through Rust RPC APIs",
+            manifest_path.display()
+        ));
+    }
+
+    let manifest: PluginManifest = serde_json::from_value(value)
         .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
 
     let id = manifest.id.trim().to_string();
@@ -234,12 +241,7 @@ fn parse_manifest_text(text: &str, manifest_path: &Path) -> ManifestResult {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
-    let entry = manifest
-        .entry
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    Ok((id, exec, functions_exec, entry))
+    Ok((id, exec, functions_exec))
 }
 
 fn manifest_defaults(plugin_dir: &Path) -> ManifestResult {
@@ -351,13 +353,13 @@ fn copy_icon(plugin_dir: &Path, bundle_dir: &Path) -> Result<(), String> {
 }
 
 pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
-    let (manifest_id, module_exec, functions_exec, entry) = manifest_defaults(&args.plugin_dir)?;
+    let (manifest_id, module_exec, functions_exec) = manifest_defaults(&args.plugin_dir)?;
     let plugin_id = manifest_id;
 
     let has_wasm = module_exec.is_some() || functions_exec.is_some();
-    let has_ui_or_assets = entry.is_some() || args.plugin_dir.join("themes").is_dir();
+    let has_ui_or_assets = args.plugin_dir.join("themes").is_dir();
     if !has_wasm && !has_ui_or_assets {
-        return Err("manifest has no module.exec, functions.exec, entry, or themes/".to_string());
+        return Err("manifest has no module.exec, functions.exec, or themes/".to_string());
     }
 
     let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
@@ -381,28 +383,6 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
     })?;
 
     copy_icon(&args.plugin_dir, &bundle_dir)?;
-
-    if let Some(entry) = entry {
-        let entry_src = args.plugin_dir.join(&entry);
-        if !entry_src.is_file() {
-            return Err(format!(
-                "manifest entry not found at {}",
-                entry_src.display()
-            ));
-        }
-        let entry_dst = bundle_dir.join(&entry);
-        if let Some(parent) = entry_dst.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
-        }
-        fs::copy(&entry_src, &entry_dst).map_err(|e| {
-            format!(
-                "failed to copy entry {} -> {}: {e}",
-                entry_src.display(),
-                entry_dst.display()
-            )
-        })?;
-    }
 
     let themes_src = args.plugin_dir.join("themes");
     if themes_src.is_dir() {
@@ -588,7 +568,7 @@ mod tests {
 
     fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8>), String> {
         let manifest_path = PathBuf::from("<memory>/openvcs.plugin.json");
-        let (plugin_id, module_exec, functions_exec, entry) =
+        let (plugin_id, module_exec, functions_exec) =
             parse_manifest_text(&plugin.manifest_json, &manifest_path)?;
 
         let has_themes = plugin
@@ -596,11 +576,9 @@ mod tests {
             .keys()
             .any(|k| k == "themes" || k.starts_with("themes/"));
         let has_wasm = module_exec.is_some() || functions_exec.is_some();
-        let has_ui_or_assets = entry.is_some() || has_themes;
+        let has_ui_or_assets = has_themes;
         if !has_wasm && !has_ui_or_assets {
-            return Err(
-                "manifest has no module.exec, functions.exec, entry, or themes/".to_string(),
-            );
+            return Err("manifest has no module.exec, functions.exec, or themes/".to_string());
         }
 
         let cursor = Cursor::new(Vec::<u8>::new());
@@ -630,24 +608,6 @@ mod tests {
                     .map_err(|e| format!("tar append icon failed: {e}"))?;
                 break;
             }
-        }
-
-        if let Some(entry) = entry {
-            let bytes = plugin.root_files.get(&entry).ok_or_else(|| {
-                format!(
-                    "manifest entry not found at {}",
-                    PathBuf::from("<memory>").join(&entry).display()
-                )
-            })?;
-            let mut header = tar::Header::new_gnu();
-            header.set_size(bytes.len() as u64);
-            header.set_cksum();
-            tar.append_data(
-                &mut header,
-                format!("{plugin_id}/{entry}"),
-                bytes.as_slice(),
-            )
-            .map_err(|e| format!("tar append entry failed: {e}"))?;
         }
 
         for (path, bytes) in &plugin.root_files {
@@ -735,10 +695,9 @@ mod tests {
 
     #[test]
     fn parse_manifest_text_parses_and_trims_fields() {
-        let (id, module_exec, functions_exec, entry) = parse_manifest_text(
+        let (id, module_exec, functions_exec) = parse_manifest_text(
             r#"{
   "id": "  my.plugin  ",
-  "entry": "  ui/index.html  ",
   "module": { "exec": "  module.wasm  " },
   "functions": { "exec": "  functions.wasm  " }
 }"#,
@@ -748,7 +707,6 @@ mod tests {
         assert_eq!(id, "my.plugin");
         assert_eq!(module_exec.as_deref(), Some("module.wasm"));
         assert_eq!(functions_exec.as_deref(), Some("functions.wasm"));
-        assert_eq!(entry.as_deref(), Some("ui/index.html"));
     }
 
     #[test]
@@ -772,13 +730,12 @@ mod tests {
 
     #[test]
     fn parse_manifest_text_treats_whitespace_only_optional_fields_as_none() {
-        let (id, module_exec, functions_exec, entry) = parse_manifest_text(
-            r#"{ "id": "x", "entry": "   ", "module": { "exec": "   " }, "functions": { "exec": "" } }"#,
+        let (id, module_exec, functions_exec) = parse_manifest_text(
+            r#"{ "id": "x", "module": { "exec": "   " }, "functions": { "exec": "" } }"#,
             Path::new("<memory>/openvcs.plugin.json"),
         )
         .unwrap();
         assert_eq!(id, "x");
-        assert_eq!(entry, None);
         assert_eq!(module_exec, None);
         assert_eq!(functions_exec, None);
     }
@@ -798,14 +755,12 @@ mod tests {
     }
 
     #[test]
-    fn virtual_bundle_packages_ui_only_plugins() {
+    fn virtual_bundle_packages_themes_only_plugins() {
         let plugin = VirtualPlugin::new(
             r#"{
-  "id": "ui-only",
-  "entry": "ui/index.html"
+  "id": "ui-only"
 }"#,
         )
-        .add_root_file("ui/index.html", b"<html></html>")
         .add_root_file("themes/theme.json", br#"{"name":"t"}"#)
         .add_root_file("icon.png", b"icon");
 
@@ -814,10 +769,6 @@ mod tests {
 
         let entries = read_tar_xz_entries_bytes(&bundle_bytes);
         assert!(entries.contains_key("ui-only/openvcs.plugin.json"));
-        assert_eq!(
-            entries.get("ui-only/ui/index.html").unwrap(),
-            b"<html></html>"
-        );
         assert!(entries.contains_key("ui-only/themes/theme.json"));
         assert_eq!(entries.get("ui-only/icon.png").unwrap(), b"icon");
     }
@@ -828,7 +779,7 @@ mod tests {
         let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
         assert_eq!(
             err,
-            "manifest has no module.exec, functions.exec, entry, or themes/"
+            "manifest has no module.exec, functions.exec, or themes/"
         );
     }
 
@@ -853,10 +804,13 @@ mod tests {
     }
 
     #[test]
-    fn virtual_bundle_errors_when_entry_missing() {
+    fn virtual_bundle_rejects_manifest_entry_field() {
         let plugin = VirtualPlugin::new(r#"{ "id": "x", "entry": "ui/index.html" }"#);
         let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
-        assert_eq!(err, "manifest entry not found at <memory>/ui/index.html");
+        assert_eq!(
+            err,
+            "manifest <memory>/openvcs.plugin.json uses unsupported field 'entry'; plugin UI must be defined through Rust RPC APIs"
+        );
     }
 
     #[test]
@@ -898,8 +852,8 @@ mod tests {
 
     #[test]
     fn virtual_bundle_prefers_icon_extension_order() {
-        let plugin = VirtualPlugin::new(r#"{ "id": "x", "entry": "ui/index.html" }"#)
-            .add_root_file("ui/index.html", b"x")
+        let plugin = VirtualPlugin::new(r#"{ "id": "x" }"#)
+            .add_root_file("themes/theme.json", br#"{"name":"t"}"#)
             .add_root_file("icon.jpg", b"jpg")
             .add_root_file("icon.png", b"png");
 
