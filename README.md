@@ -7,7 +7,7 @@ Tooling for building and packaging OpenVCS plugins.
 
 ## `openvcs-plugin`
 - Bundle a plugin into a single `.ovcsp` tar.xz: `cargo run -p openvcs-sdk -- --plugin-dir /path/to/plugin`
-- Plugin manifests must use WASM components (`module.exec`/`functions.exec`) and/or `themes/`; JavaScript `entry` is rejected.
+- Plugin manifests must use `module.exec` (WASM) and/or `themes/`.
 
 ## Development
 - Required: `cargo fmt --all`

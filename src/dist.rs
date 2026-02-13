@@ -23,7 +23,7 @@ pub struct PluginBuildArgs {
 }
 
 // Reduce clippy type complexity warnings for manifest parsing results.
-type ManifestResult = Result<(String, Option<String>, Option<String>), String>;
+type ManifestResult = Result<(String, Option<String>), String>;
 
 #[derive(Debug, Deserialize)]
 struct CargoMetadata {
@@ -358,25 +358,14 @@ struct PluginManifestModule {
 }
 
 #[derive(Debug, Deserialize)]
-struct PluginManifestFunctions {
-    #[serde(default)]
-    exec: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
 struct PluginManifest {
     id: String,
     #[serde(default)]
     module: Option<PluginManifestModule>,
-    #[serde(default)]
-    functions: Option<PluginManifestFunctions>,
 }
 
 fn parse_manifest_text(text: &str, manifest_path: &Path) -> ManifestResult {
-    let value: serde_json::Value = serde_json::from_str(text)
-        .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
-
-    let manifest: PluginManifest = serde_json::from_value(value)
+    let manifest: PluginManifest = serde_json::from_str(text)
         .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
 
     let id = manifest.id.trim().to_string();
@@ -393,13 +382,7 @@ fn parse_manifest_text(text: &str, manifest_path: &Path) -> ManifestResult {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
-    let functions_exec = manifest
-        .functions
-        .and_then(|f| f.exec)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    Ok((id, exec, functions_exec))
+    Ok((id, exec))
 }
 
 fn manifest_defaults(plugin_dir: &Path) -> ManifestResult {
@@ -511,13 +494,13 @@ fn copy_icon(plugin_dir: &Path, bundle_dir: &Path) -> Result<(), String> {
 }
 
 pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
-    let (manifest_id, module_exec, functions_exec) = manifest_defaults(&args.plugin_dir)?;
+    let (manifest_id, module_exec) = manifest_defaults(&args.plugin_dir)?;
     let plugin_id = manifest_id;
 
-    let has_wasm = module_exec.is_some() || functions_exec.is_some();
+    let has_wasm = module_exec.is_some();
     let has_ui_or_assets = args.plugin_dir.join("themes").is_dir();
     if !has_wasm && !has_ui_or_assets {
-        return Err("manifest has no module.exec, functions.exec, or themes/".to_string());
+        return Err("manifest has no module.exec or themes/".to_string());
     }
 
     let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
@@ -549,7 +532,7 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
 
     let target_dir = resolve_target_dir(&args.plugin_dir);
 
-    for exec in [module_exec, functions_exec].into_iter().flatten() {
+    for exec in [module_exec].into_iter().flatten() {
         let exec = exec.trim().to_string();
         if exec.is_empty() {
             continue;
@@ -725,17 +708,16 @@ mod tests {
 
     fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8>), String> {
         let manifest_path = PathBuf::from("<memory>/openvcs.plugin.json");
-        let (plugin_id, module_exec, functions_exec) =
-            parse_manifest_text(&plugin.manifest_json, &manifest_path)?;
+        let (plugin_id, module_exec) = parse_manifest_text(&plugin.manifest_json, &manifest_path)?;
 
         let has_themes = plugin
             .root_files
             .keys()
             .any(|k| k == "themes" || k.starts_with("themes/"));
-        let has_wasm = module_exec.is_some() || functions_exec.is_some();
+        let has_wasm = module_exec.is_some();
         let has_ui_or_assets = has_themes;
         if !has_wasm && !has_ui_or_assets {
-            return Err("manifest has no module.exec, functions.exec, or themes/".to_string());
+            return Err("manifest has no module.exec or themes/".to_string());
         }
 
         let cursor = Cursor::new(Vec::<u8>::new());
@@ -778,7 +760,7 @@ mod tests {
                 .map_err(|e| format!("tar append theme failed: {e}"))?;
         }
 
-        for exec in [module_exec, functions_exec].into_iter().flatten() {
+        for exec in [module_exec].into_iter().flatten() {
             let exec = exec.trim().to_string();
             if exec.is_empty() {
                 continue;
@@ -852,18 +834,16 @@ mod tests {
 
     #[test]
     fn parse_manifest_text_parses_and_trims_fields() {
-        let (id, module_exec, functions_exec) = parse_manifest_text(
+        let (id, module_exec) = parse_manifest_text(
             r#"{
   "id": "  my.plugin  ",
-  "module": { "exec": "  module.wasm  " },
-  "functions": { "exec": "  functions.wasm  " }
+  "module": { "exec": "  module.wasm  " }
 }"#,
             Path::new("<memory>/openvcs.plugin.json"),
         )
         .unwrap();
         assert_eq!(id, "my.plugin");
         assert_eq!(module_exec.as_deref(), Some("module.wasm"));
-        assert_eq!(functions_exec.as_deref(), Some("functions.wasm"));
     }
 
     #[test]
@@ -887,14 +867,24 @@ mod tests {
 
     #[test]
     fn parse_manifest_text_treats_whitespace_only_optional_fields_as_none() {
-        let (id, module_exec, functions_exec) = parse_manifest_text(
-            r#"{ "id": "x", "module": { "exec": "   " }, "functions": { "exec": "" } }"#,
+        let (id, module_exec) = parse_manifest_text(
+            r#"{ "id": "x", "module": { "exec": "   " } }"#,
             Path::new("<memory>/openvcs.plugin.json"),
         )
         .unwrap();
         assert_eq!(id, "x");
         assert_eq!(module_exec, None);
-        assert_eq!(functions_exec, None);
+    }
+
+    #[test]
+    fn parse_manifest_text_ignores_functions_field() {
+        let (id, module_exec) = parse_manifest_text(
+            r#"{ "id": "x", "module": { "exec": "m.wasm" }, "functions": { "exec": "f.wasm" } }"#,
+            Path::new("<memory>/openvcs.plugin.json"),
+        )
+        .unwrap();
+        assert_eq!(id, "x");
+        assert_eq!(module_exec.as_deref(), Some("m.wasm"));
     }
 
     #[test]
@@ -934,10 +924,7 @@ mod tests {
     fn virtual_bundle_errors_when_manifest_has_nothing_to_bundle() {
         let plugin = VirtualPlugin::new(r#"{ "id": "x" }"#);
         let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
-        assert_eq!(
-            err,
-            "manifest has no module.exec, functions.exec, or themes/"
-        );
+        assert_eq!(err, "manifest has no module.exec or themes/");
     }
 
     #[test]
@@ -983,30 +970,37 @@ mod tests {
     }
 
     #[test]
-    fn virtual_bundle_includes_wasm_execs_in_bin() {
+    fn virtual_bundle_includes_wasm_exec_in_bin() {
+        let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "module.wasm" } }"#)
+            .add_wasm_exec("module.wasm", b"\0asm");
+
+        let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
+        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
+        assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"\0asm");
+    }
+
+    #[test]
+    fn virtual_bundle_trims_exec_field() {
+        let plugin =
+            VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "  module.wasm  " } }"#)
+                .add_wasm_exec("module.wasm", b"x");
+
+        let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
+        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
+        assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"x");
+    }
+
+    #[test]
+    fn virtual_bundle_ignores_functions_field() {
         let plugin = VirtualPlugin::new(
             r#"{ "id": "x", "module": { "exec": "module.wasm" }, "functions": { "exec": "func.wasm" } }"#,
         )
         .add_wasm_exec("module.wasm", b"\0asm")
         .add_wasm_exec("func.wasm", b"\0asm2");
-
         let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
         let entries = read_tar_xz_entries_bytes(&bundle_bytes);
         assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"\0asm");
-        assert_eq!(entries.get("x/bin/func.wasm").unwrap(), b"\0asm2");
-    }
-
-    #[test]
-    fn virtual_bundle_trims_and_ignores_empty_exec_fields() {
-        let plugin = VirtualPlugin::new(
-            r#"{ "id": "x", "module": { "exec": "  module.wasm  " }, "functions": { "exec": "   " } }"#,
-        )
-        .add_wasm_exec("module.wasm", b"x");
-
-        let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
-        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
-        assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"x");
-        assert!(!entries.contains_key("x/bin/   "));
+        assert!(!entries.contains_key("x/bin/func.wasm"));
     }
 
     #[test]
