@@ -280,15 +280,28 @@ fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<
     let mut errors = Vec::new();
     for target in targets {
         if has_plugin_entry {
-            match build_plugin_shim_target(plugin_dir, target_dir, target) {
+            // Prefer native plugin bin targets. The stdio shim remains a deprecated
+            // compatibility fallback during component migration.
+            match build_plugin_bin_target(plugin_dir, target_dir, bin, target) {
                 Ok(path) => return Ok(path),
-                Err(shim_err) => match build_plugin_bin_target(plugin_dir, target_dir, bin, target)
-                {
-                    Ok(path) => return Ok(path),
-                    Err(bin_err) => {
-                        errors.push(format!("{target}: shim: {shim_err}; bin: {bin_err}"));
+                Err(bin_err) => {
+                    eprintln!(
+                        "openvcs-plugin: build for {target} has no native bin target yet; attempting deprecated stdio shim fallback: {bin_err}"
+                    );
+                    match build_plugin_shim_target(plugin_dir, target_dir, target) {
+                        Ok(path) => {
+                            eprintln!(
+                                "openvcs-plugin: using deprecated stdio shim fallback for {target}; migrate plugin entry to the function ABI component export path"
+                            );
+                            return Ok(path);
+                        }
+                        Err(shim_err) => {
+                            errors.push(format!(
+                                "{target}: bin: {bin_err}; deprecated shim fallback: {shim_err}"
+                            ));
+                        }
                     }
-                },
+                }
             }
         } else {
             match build_plugin_bin_target(plugin_dir, target_dir, bin, target) {
