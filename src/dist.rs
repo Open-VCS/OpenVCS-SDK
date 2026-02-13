@@ -203,17 +203,21 @@ fn build_plugin_shim_target(
     let shim_src = shim_root.join("src");
     fs::create_dir_all(&shim_src).map_err(|e| format!("mkdir {}: {e}", shim_src.display()))?;
 
-    let core_dep = if let Some(core_path) = find_local_core_path(plugin_dir) {
-        format!(
-            "openvcs-core = {{ version = \"0.1\", path = \"{}\", features = [\"plugin-protocol\"] }}",
-            toml_escape(&core_path.to_string_lossy())
+    let (core_dep, core_patch) = if let Some(core_path) = find_local_core_path(plugin_dir) {
+        let path = toml_escape(&core_path.to_string_lossy());
+        (
+            format!("openvcs-core = {{ path = \"{path}\", features = [\"plugin-protocol\"] }}"),
+            format!("[patch.crates-io]\nopenvcs-core = {{ path = \"{path}\" }}\n"),
         )
     } else {
-        "openvcs-core = { version = \"0.1\", features = [\"plugin-protocol\"] }".to_string()
+        (
+            "openvcs-core = { version = \"0.1\", features = [\"plugin-protocol\"] }".to_string(),
+            String::new(),
+        )
     };
 
     let cargo_toml = format!(
-        "[package]\nname = \"openvcs-plugin-entry-shim\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\n{core_dep}\nplugin_entry_dep = {{ package = \"{}\", path = \"{}\" }}\n",
+        "[package]\nname = \"openvcs-plugin-entry-shim\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\n{core_dep}\nplugin_entry_dep = {{ package = \"{}\", path = \"{}\" }}\n\n{core_patch}\n[workspace]\n",
         toml_escape(&plugin_package),
         toml_escape(&plugin_dir.to_string_lossy()),
     );
@@ -221,18 +225,18 @@ fn build_plugin_shim_target(
         .map_err(|e| format!("write {}: {e}", shim_root.join("Cargo.toml").display()))?;
 
     let init_expr = if has_init {
-        "Some(plugin::init)"
+        "Some(plugin::init as Hook)"
     } else {
         "None"
     };
     let deinit_expr = if has_deinit {
-        "Some(plugin::deinit)"
+        "Some(plugin::deinit as Hook)"
     } else {
         "None"
     };
 
     let shim_main = format!(
-        "use plugin_entry_dep::plugin_entry as plugin;\n\nfn main() {{\n    plugin::register_handlers();\n    if let Err(e) = openvcs_core::plugin_runtime::run_registered_with_lifecycle({init_expr}, {deinit_expr}) {{\n        eprintln!(\"openvcs-plugin-entry-shim: {{}}\", e);\n        std::process::exit(1);\n    }}\n}}\n"
+        "use plugin_entry_dep::plugin_entry as plugin;\n\ntype Hook = fn(&mut openvcs_core::plugin_runtime::PluginCtx) -> openvcs_core::plugin_runtime::EventHandlerResult;\n\nfn main() {{\n    plugin::register_handlers();\n    if let Err(e) = openvcs_core::plugin_runtime::run_registered_with_lifecycle({init_expr}, {deinit_expr}) {{\n        eprintln!(\"openvcs-plugin-entry-shim: {{}}\", e);\n        std::process::exit(1);\n    }}\n}}\n"
     );
     fs::write(shim_src.join("main.rs"), shim_main)
         .map_err(|e| format!("write {}: {e}", shim_src.join("main.rs").display()))?;
@@ -272,16 +276,30 @@ fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<
         return Err("no supported WASI targets found (expected wasm32-wasip1)".to_string());
     }
 
+    let has_plugin_entry = plugin_dir.join("src").join("plugin_entry.rs").is_file();
     let mut errors = Vec::new();
     for target in targets {
-        match build_plugin_bin_target(plugin_dir, target_dir, bin, target) {
-            Ok(path) => return Ok(path),
-            Err(bin_err) => {
-                eprintln!("openvcs-plugin: build for {target} failed: {bin_err}");
-                match build_plugin_shim_target(plugin_dir, target_dir, target) {
+        if has_plugin_entry {
+            match build_plugin_shim_target(plugin_dir, target_dir, target) {
+                Ok(path) => return Ok(path),
+                Err(shim_err) => match build_plugin_bin_target(plugin_dir, target_dir, bin, target)
+                {
                     Ok(path) => return Ok(path),
-                    Err(shim_err) => {
-                        errors.push(format!("{target}: {bin_err}; shim: {shim_err}"));
+                    Err(bin_err) => {
+                        errors.push(format!("{target}: shim: {shim_err}; bin: {bin_err}"));
+                    }
+                },
+            }
+        } else {
+            match build_plugin_bin_target(plugin_dir, target_dir, bin, target) {
+                Ok(path) => return Ok(path),
+                Err(bin_err) => {
+                    eprintln!("openvcs-plugin: build for {target} failed: {bin_err}");
+                    match build_plugin_shim_target(plugin_dir, target_dir, target) {
+                        Ok(path) => return Ok(path),
+                        Err(shim_err) => {
+                            errors.push(format!("{target}: {bin_err}; shim: {shim_err}"));
+                        }
                     }
                 }
             }
@@ -357,12 +375,6 @@ struct PluginManifest {
 fn parse_manifest_text(text: &str, manifest_path: &Path) -> ManifestResult {
     let value: serde_json::Value = serde_json::from_str(text)
         .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
-    if value.get("entry").is_some() {
-        return Err(format!(
-            "manifest {} uses unsupported field 'entry'; plugin UI must be defined through Rust RPC APIs",
-            manifest_path.display()
-        ));
-    }
 
     let manifest: PluginManifest = serde_json::from_value(value)
         .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
@@ -949,13 +961,15 @@ mod tests {
     }
 
     #[test]
-    fn virtual_bundle_rejects_manifest_entry_field() {
-        let plugin = VirtualPlugin::new(r#"{ "id": "x", "entry": "ui/index.html" }"#);
-        let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
-        assert_eq!(
-            err,
-            "manifest <memory>/openvcs.plugin.json uses unsupported field 'entry'; plugin UI must be defined through Rust RPC APIs"
-        );
+    fn virtual_bundle_allows_manifest_entry_field() {
+        let plugin = VirtualPlugin::new(
+            r#"{ "id": "x", "entry": "ui/index.html", "module": { "exec": "module.wasm" } }"#,
+        )
+        .add_wasm_exec("module.wasm", b"\0asm");
+        let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
+        let entries = read_tar_xz_entries_bytes(&bundle_bytes);
+        assert!(entries.contains_key("x/openvcs.plugin.json"));
+        assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"\0asm");
     }
 
     #[test]
