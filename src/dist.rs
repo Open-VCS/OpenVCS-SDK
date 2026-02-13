@@ -28,6 +28,14 @@ type ManifestResult = Result<(String, Option<String>, Option<String>), String>;
 #[derive(Debug, Deserialize)]
 struct CargoMetadata {
     target_directory: PathBuf,
+    #[serde(default)]
+    packages: Vec<CargoMetadataPackage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoMetadataPackage {
+    name: String,
+    manifest_path: String,
 }
 
 fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
@@ -94,7 +102,7 @@ fn rustc_target_list() -> Option<Vec<String>> {
     )
 }
 
-fn resolve_target_dir(plugin_dir: &Path) -> PathBuf {
+fn cargo_metadata(plugin_dir: &Path) -> Option<CargoMetadata> {
     let manifest_path = plugin_dir.join("Cargo.toml");
     let output = Command::new("cargo")
         .arg("metadata")
@@ -107,16 +115,148 @@ fn resolve_target_dir(plugin_dir: &Path) -> PathBuf {
 
     let output = match output {
         Ok(output) if output.status.success() => output,
-        _ => return plugin_dir.join("target"),
+        _ => return None,
     };
 
-    match serde_json::from_slice::<CargoMetadata>(&output.stdout) {
-        Ok(metadata) => metadata.target_directory,
-        Err(_) => plugin_dir.join("target"),
-    }
+    serde_json::from_slice::<CargoMetadata>(&output.stdout).ok()
 }
 
-fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<String, String> {
+fn resolve_target_dir(plugin_dir: &Path) -> PathBuf {
+    cargo_metadata(plugin_dir)
+        .map(|m| m.target_directory)
+        .unwrap_or_else(|| plugin_dir.join("target"))
+}
+
+fn package_name_for_manifest(plugin_dir: &Path) -> Option<String> {
+    let manifest_path = plugin_dir.join("Cargo.toml");
+    let manifest = manifest_path.to_string_lossy().replace('\\', "/");
+    let metadata = cargo_metadata(plugin_dir)?;
+    metadata
+        .packages
+        .iter()
+        .find(|p| p.manifest_path.replace('\\', "/") == manifest)
+        .map(|p| p.name.clone())
+        .or_else(|| metadata.packages.first().map(|p| p.name.clone()))
+}
+
+fn has_pub_fn(path: &Path, fn_name: &str) -> bool {
+    read_to_string(path)
+        .ok()
+        .is_some_and(|s| s.contains(&format!("pub fn {fn_name}(")))
+}
+
+fn find_local_core_path(plugin_dir: &Path) -> Option<PathBuf> {
+    for ancestor in plugin_dir.ancestors() {
+        let candidate = ancestor.join("Core").join("Cargo.toml");
+        if candidate.is_file() {
+            return Some(ancestor.join("Core"));
+        }
+    }
+    None
+}
+
+fn toml_escape(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn build_plugin_bin_target(
+    plugin_dir: &Path,
+    target_dir: &Path,
+    bin: &str,
+    target: &str,
+) -> Result<PathBuf, String> {
+    let manifest_path = plugin_dir.join("Cargo.toml");
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(plugin_dir);
+    cmd.arg("build");
+    cmd.arg("--release");
+    cmd.arg("--locked");
+    cmd.arg("--manifest-path");
+    cmd.arg(&manifest_path);
+    cmd.arg("--target-dir");
+    cmd.arg(target_dir);
+    cmd.args(["--bin", bin]);
+    cmd.args(["--target", target]);
+    run_status(cmd)?;
+    Ok(built_wasm_bin_path(target_dir, target, bin))
+}
+
+fn build_plugin_shim_target(
+    plugin_dir: &Path,
+    target_dir: &Path,
+    target: &str,
+) -> Result<PathBuf, String> {
+    let plugin_package = package_name_for_manifest(plugin_dir)
+        .ok_or_else(|| "unable to determine plugin package name".to_string())?;
+    let plugin_entry = plugin_dir.join("src").join("plugin_entry.rs");
+    if !plugin_entry.is_file() {
+        return Err("missing src/plugin_entry.rs for SDK-generated entry shim".to_string());
+    }
+    if !has_pub_fn(&plugin_entry, "register_handlers") {
+        return Err("plugin_entry.rs must define pub fn register_handlers()".to_string());
+    }
+
+    let has_init = has_pub_fn(&plugin_entry, "init");
+    let has_deinit = has_pub_fn(&plugin_entry, "deinit");
+
+    let shim_root = target_dir.join("openvcs-shim");
+    let shim_src = shim_root.join("src");
+    fs::create_dir_all(&shim_src).map_err(|e| format!("mkdir {}: {e}", shim_src.display()))?;
+
+    let core_dep = if let Some(core_path) = find_local_core_path(plugin_dir) {
+        format!(
+            "openvcs-core = {{ version = \"0.1\", path = \"{}\", features = [\"plugin-protocol\"] }}",
+            toml_escape(&core_path.to_string_lossy())
+        )
+    } else {
+        "openvcs-core = { version = \"0.1\", features = [\"plugin-protocol\"] }".to_string()
+    };
+
+    let cargo_toml = format!(
+        "[package]\nname = \"openvcs-plugin-entry-shim\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\n{core_dep}\nplugin_entry_dep = {{ package = \"{}\", path = \"{}\" }}\n",
+        toml_escape(&plugin_package),
+        toml_escape(&plugin_dir.to_string_lossy()),
+    );
+    fs::write(shim_root.join("Cargo.toml"), cargo_toml)
+        .map_err(|e| format!("write {}: {e}", shim_root.join("Cargo.toml").display()))?;
+
+    let init_expr = if has_init {
+        "Some(plugin::init)"
+    } else {
+        "None"
+    };
+    let deinit_expr = if has_deinit {
+        "Some(plugin::deinit)"
+    } else {
+        "None"
+    };
+
+    let shim_main = format!(
+        "use plugin_entry_dep::plugin_entry as plugin;\n\nfn main() {{\n    plugin::register_handlers();\n    if let Err(e) = openvcs_core::plugin_runtime::run_registered_with_lifecycle({init_expr}, {deinit_expr}) {{\n        eprintln!(\"openvcs-plugin-entry-shim: {{}}\", e);\n        std::process::exit(1);\n    }}\n}}\n"
+    );
+    fs::write(shim_src.join("main.rs"), shim_main)
+        .map_err(|e| format!("write {}: {e}", shim_src.join("main.rs").display()))?;
+
+    let shim_target_dir = target_dir.join("openvcs-shim-target");
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&shim_root);
+    cmd.arg("build");
+    cmd.arg("--release");
+    cmd.arg("--manifest-path");
+    cmd.arg(shim_root.join("Cargo.toml"));
+    cmd.arg("--target-dir");
+    cmd.arg(&shim_target_dir);
+    cmd.args(["--bin", "openvcs-plugin-entry-shim"]);
+    cmd.args(["--target", target]);
+    run_status(cmd)?;
+    Ok(built_wasm_bin_path(
+        &shim_target_dir,
+        target,
+        "openvcs-plugin-entry-shim",
+    ))
+}
+
+fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<PathBuf, String> {
     let available = rustc_target_list().unwrap_or_default();
     let supports_wasip1 = available.is_empty() || available.iter().any(|t| t == "wasm32-wasip1");
     let supports_legacy = available.is_empty() || available.iter().any(|t| t == "wasm32-wasi");
@@ -132,24 +272,30 @@ fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<
         return Err("no supported WASI targets found (expected wasm32-wasip1)".to_string());
     }
 
+    let mut errors = Vec::new();
     for target in targets {
-        let manifest_path = plugin_dir.join("Cargo.toml");
-        let mut cmd = Command::new("cargo");
-        cmd.current_dir(plugin_dir);
-        cmd.arg("build");
-        cmd.arg("--release");
-        cmd.arg("--manifest-path");
-        cmd.arg(&manifest_path);
-        cmd.arg("--target-dir");
-        cmd.arg(target_dir);
-        cmd.args(["--bin", bin]);
-        cmd.args(["--target", target]);
-        match run_status(cmd) {
-            Ok(()) => return Ok(target.to_string()),
-            Err(e) => eprintln!("openvcs-plugin: build for {target} failed: {e}"),
+        match build_plugin_bin_target(plugin_dir, target_dir, bin, target) {
+            Ok(path) => return Ok(path),
+            Err(bin_err) => {
+                eprintln!("openvcs-plugin: build for {target} failed: {bin_err}");
+                match build_plugin_shim_target(plugin_dir, target_dir, target) {
+                    Ok(path) => return Ok(path),
+                    Err(shim_err) => {
+                        errors.push(format!("{target}: {bin_err}; shim: {shim_err}"));
+                    }
+                }
+            }
         }
     }
-    Err("failed to build plugin for wasm32-wasip1 or wasm32-wasi".to_string())
+
+    if errors.is_empty() {
+        Err("failed to build plugin for wasm32-wasip1 or wasm32-wasi".to_string())
+    } else {
+        Err(format!(
+            "failed to build plugin for wasm32-wasip1 or wasm32-wasi ({})",
+            errors.join(" | ")
+        ))
+    }
 }
 
 fn built_wasm_bin_path(target_dir: &Path, target: &str, bin: &str) -> PathBuf {
@@ -407,8 +553,7 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
             .strip_suffix(".wasm")
             .ok_or_else(|| format!("invalid wasm exec: {exec}"))?
             .to_string();
-        let target = build_plugin_wasi(&args.plugin_dir, &target_dir, &bin)?;
-        let bin_src = built_wasm_bin_path(&target_dir, &target, &bin);
+        let bin_src = build_plugin_wasi(&args.plugin_dir, &target_dir, &bin)?;
         if !bin_src.is_file() {
             return Err(format!(
                 "built wasm not found at {} (did cargo build succeed?)",
