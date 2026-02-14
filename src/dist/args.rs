@@ -1,0 +1,48 @@
+use crate::dist::PluginBuildArgs;
+use std::env;
+use std::ffi::OsString;
+use std::path::PathBuf;
+
+pub(crate) fn usage() -> &'static str {
+    "openvcs-plugin [args]\n\
+\n\
+  --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n\
+  --out <path>          Output directory (default: ./dist)\n\
+\n\
+Builds plugin executables and packages them into a single `.ovcsp` tar.xz.\n"
+}
+
+fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
+    if args.is_empty() {
+        return Err(format!("missing value for {flag}"));
+    }
+    Ok(args.remove(0).to_string_lossy().to_string())
+}
+
+pub fn parse_args(mut args: Vec<OsString>) -> Result<PluginBuildArgs, String> {
+    let mut plugin_dir: Option<PathBuf> = None;
+    let mut out_dir: PathBuf = PathBuf::from("dist");
+
+    while let Some(arg) = args.first().cloned() {
+        let s = arg.to_string_lossy();
+        if !s.starts_with("--") {
+            return Err(format!("unexpected argument: {s}"));
+        }
+        args.remove(0);
+        match s.as_ref() {
+            "--plugin-dir" => {
+                plugin_dir = Some(PathBuf::from(take_value(&mut args, "--plugin-dir")?))
+            }
+            "--out" => out_dir = PathBuf::from(take_value(&mut args, "--out")?),
+            "--help" => return Err(usage().to_string()),
+            other => return Err(format!("unknown flag: {other}")),
+        }
+    }
+
+    let plugin_dir =
+        plugin_dir.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    Ok(PluginBuildArgs {
+        plugin_dir,
+        out_dir,
+    })
+}

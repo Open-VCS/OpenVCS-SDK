@@ -1,0 +1,92 @@
+use crate::dist::build::{build_plugin_wasi, ensure_wasm_magic, platform_exec_filename};
+use crate::dist::fsops::{copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz};
+use crate::dist::manifest::manifest_defaults;
+use crate::dist::metadata::resolve_target_dir;
+use crate::dist::PluginBuildArgs;
+use std::fs;
+use std::path::PathBuf;
+
+pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
+    let (manifest_id, module_exec) = manifest_defaults(&args.plugin_dir)?;
+    let plugin_id = manifest_id;
+
+    let has_wasm = module_exec.is_some();
+    let has_ui_or_assets = args.plugin_dir.join("themes").is_dir();
+    if !has_wasm && !has_ui_or_assets {
+        return Err("manifest has no module.exec or themes/".to_string());
+    }
+
+    let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
+
+    fs::create_dir_all(&args.out_dir)
+        .map_err(|e| format!("failed to create {}: {e}", args.out_dir.display()))?;
+
+    let staging_root = unique_staging_dir(&args.out_dir);
+    let bundle_dir = staging_root.join(&plugin_id);
+    let bin_dir = bundle_dir.join("bin");
+
+    fs::create_dir_all(&bin_dir)
+        .map_err(|e| format!("failed to create {}: {e}", bin_dir.display()))?;
+
+    fs::copy(&manifest_src, bundle_dir.join("openvcs.plugin.json")).map_err(|e| {
+        format!(
+            "failed to copy manifest {} -> {}: {e}",
+            manifest_src.display(),
+            bundle_dir.join("openvcs.plugin.json").display()
+        )
+    })?;
+
+    copy_icon(&args.plugin_dir, &bundle_dir)?;
+
+    let themes_src = args.plugin_dir.join("themes");
+    if themes_src.is_dir() {
+        copy_dir_recursive(&themes_src, &bundle_dir.join("themes"))?;
+    }
+
+    let target_dir = resolve_target_dir(&args.plugin_dir);
+
+    for exec in [module_exec].into_iter().flatten() {
+        let exec = exec.trim().to_string();
+        if exec.is_empty() {
+            continue;
+        }
+
+        if !exec.ends_with(".wasm") {
+            return Err(format!(
+                "manifest exec must end with .wasm (OpenVCS is WASM-only): {exec}"
+            ));
+        }
+
+        let bin = exec
+            .strip_suffix(".wasm")
+            .ok_or_else(|| format!("invalid wasm exec: {exec}"))?
+            .to_string();
+        let bin_src = build_plugin_wasi(&args.plugin_dir, &target_dir, &bin)?;
+        if !bin_src.is_file() {
+            return Err(format!(
+                "built wasm not found at {} (did cargo build succeed?)",
+                bin_src.display()
+            ));
+        }
+        ensure_wasm_magic(&bin_src)?;
+        let bin_dst = bin_dir.join(platform_exec_filename(&exec));
+        fs::copy(&bin_src, &bin_dst).map_err(|e| {
+            format!(
+                "failed to copy wasm {} -> {}: {e}",
+                bin_src.display(),
+                bin_dst.display()
+            )
+        })?;
+    }
+
+    let out_path = args.out_dir.join(format!("{plugin_id}.ovcsp"));
+    if out_path.exists() {
+        fs::remove_file(&out_path)
+            .map_err(|e| format!("failed to remove existing {}: {e}", out_path.display()))?;
+    }
+    write_tar_xz(&out_path, &staging_root, &plugin_id)?;
+
+    let _ = fs::remove_dir_all(&staging_root);
+
+    Ok(out_path)
+}
