@@ -6,6 +6,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
+use wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADAPTER;
+use wasmparser::{Encoding, Parser, Payload};
+use wit_component::ComponentEncoder;
 
 fn usage() -> &'static str {
     "openvcs-plugin [args]\n\
@@ -49,7 +52,7 @@ const GENERATED_COMPONENT_GUEST_IMPL: &str = r#"
     fn clone_repo(url: String, dest: String) -> Result<(), api::PluginError> { call_unit("clone", serde_json::json!({ "url": url, "dest": dest })) }
     fn get_workdir() -> Result<String, api::PluginError> { call_typed("workdir", serde_json::Value::Null) }
     fn get_current_branch() -> Result<Option<String>, api::PluginError> { call_typed("current_branch", serde_json::Value::Null) }
-    fn list_branches() -> Result<Vec<api::BranchItem>, api::PluginError> { call_typed("branches", serde_json::Value::Null) }
+    fn list_branches() -> Result<Vec<api::BranchItem>, api::PluginError> { call_branches() }
     fn list_local_branches() -> Result<Vec<String>, api::PluginError> { call_typed("local_branches", serde_json::Value::Null) }
     fn create_branch(name: String, checkout: bool) -> Result<(), api::PluginError> { call_unit("create_branch", serde_json::json!({ "name": name, "checkout": checkout })) }
     fn checkout_branch(name: String) -> Result<(), api::PluginError> { call_unit("checkout_branch", serde_json::json!({ "name": name })) }
@@ -318,8 +321,127 @@ fn to_plugin_error(err: openvcs_core::plugin_runtime::PluginError) -> api::Plugi
     }}
 }}
 
+fn to_host_error(err: host_api::HostError) -> openvcs_core::plugin_runtime::PluginError {{
+    openvcs_core::plugin_runtime::PluginError {{
+        code: Some(err.code),
+        message: err.message,
+        data: None,
+    }}
+}}
+
+fn init_host_bridge() {{
+    let _ = openvcs_core::host::init_component_host(|method, params| {{
+        match method {{
+            "runtime.info" => {{
+                let info = host_api::get_runtime_info().map_err(to_host_error)?;
+                serde_json::to_value(info)
+                    .map_err(|e| openvcs_core::plugin_runtime::PluginError::code("host.serialize", e.to_string()))
+            }}
+            "events.subscribe" => {{
+                #[derive(serde::Deserialize)]
+                struct Params {{
+                    name: String,
+                }}
+                let p: Params = serde_json::from_value(params)
+                    .map_err(|e| openvcs_core::plugin_runtime::PluginError::code("host.params", e.to_string()))?;
+                host_api::subscribe_event(&p.name).map_err(to_host_error)?;
+                Ok(serde_json::Value::Null)
+            }}
+            "events.emit" => {{
+                #[derive(serde::Deserialize)]
+                struct Params {{
+                    name: String,
+                    payload: Vec<u8>,
+                }}
+                let p: Params = serde_json::from_value(params)
+                    .map_err(|e| openvcs_core::plugin_runtime::PluginError::code("host.params", e.to_string()))?;
+                host_api::emit_event(&p.name, &p.payload).map_err(to_host_error)?;
+                Ok(serde_json::Value::Null)
+            }}
+            "ui.notify" => {{
+                #[derive(serde::Deserialize)]
+                struct Params {{
+                    message: String,
+                }}
+                let p: Params = serde_json::from_value(params)
+                    .map_err(|e| openvcs_core::plugin_runtime::PluginError::code("host.params", e.to_string()))?;
+                host_api::ui_notify(&p.message).map_err(to_host_error)?;
+                Ok(serde_json::Value::Null)
+            }}
+            "workspace.readFile" => {{
+                #[derive(serde::Deserialize)]
+                struct Params {{
+                    path: String,
+                }}
+                let p: Params = serde_json::from_value(params)
+                    .map_err(|e| openvcs_core::plugin_runtime::PluginError::code("host.params", e.to_string()))?;
+                let content = host_api::workspace_read_file(&p.path).map_err(to_host_error)?;
+                Ok(serde_json::Value::String(String::from_utf8_lossy(&content).to_string()))
+            }}
+            "workspace.writeFile" => {{
+                #[derive(serde::Deserialize)]
+                struct Params {{
+                    path: String,
+                    content: String,
+                }}
+                let p: Params = serde_json::from_value(params)
+                    .map_err(|e| openvcs_core::plugin_runtime::PluginError::code("host.params", e.to_string()))?;
+                host_api::workspace_write_file(&p.path, p.content.as_bytes()).map_err(to_host_error)?;
+                Ok(serde_json::Value::Null)
+            }}
+            "process.exec" | "process.execGit" => {{
+                #[derive(serde::Deserialize)]
+                struct Params {{
+                    #[serde(default)]
+                    program: String,
+                    #[serde(default)]
+                    cwd: Option<String>,
+                    #[serde(default)]
+                    args: Vec<String>,
+                    #[serde(default)]
+                    env: serde_json::Map<String, serde_json::Value>,
+                    #[serde(default)]
+                    stdin: Option<String>,
+                }}
+                let p: Params = serde_json::from_value(params)
+                    .map_err(|e| openvcs_core::plugin_runtime::PluginError::code("host.params", e.to_string()))?;
+                if !p.program.is_empty() && p.program != "git" {{
+                    return Err(openvcs_core::plugin_runtime::PluginError::code(
+                        "host.invalid_program",
+                        format!("unsupported process program: {{}}", p.program),
+                    ));
+                }}
+                let env: Vec<host_api::EnvVar> = p
+                    .env
+                    .into_iter()
+                    .map(|(key, value)| host_api::EnvVar {{
+                        key,
+                        value: value.as_str().unwrap_or("").to_string(),
+                    }})
+                    .collect();
+                let cwd = p.cwd.as_deref().filter(|s| !s.is_empty());
+                let stdin = p.stdin.as_deref().filter(|s| !s.is_empty());
+                let out = host_api::process_exec_git(
+                    cwd,
+                    &p.args,
+                    &env,
+                    stdin,
+                )
+                .map_err(to_host_error)?;
+                serde_json::to_value(out)
+                    .map_err(|e| openvcs_core::plugin_runtime::PluginError::code("host.serialize", e.to_string()))
+            }}
+            other => Err(openvcs_core::plugin_runtime::PluginError::code(
+                "host.method_not_found",
+                format!("unsupported host method: {{other}}"),
+            )),
+        }}
+    }});
+}}
+
 fn state() -> &'static Mutex<PluginState> {{
     STATE.get_or_init(|| {{
+        init_host_bridge();
         plugin::register_handlers();
         let ctx = PluginCtx::new(|event| {{
             if let Ok(payload) = serde_json::to_vec(&event) {{
@@ -368,6 +490,59 @@ fn call_typed<T: serde::de::DeserializeOwned>(method: &str, params: serde_json::
         code: "plugin.deserialize".to_string(),
         message: e.to_string(),
     }})
+}}
+
+fn call_branches() -> Result<Vec<api::BranchItem>, api::PluginError> {{
+    let value = call_json("branches", serde_json::Value::Null)?;
+    let list = value.as_array().ok_or_else(|| api::PluginError {{
+        code: "plugin.deserialize".to_string(),
+        message: "branches result is not an array".to_string(),
+    }})?;
+    let mut out = Vec::with_capacity(list.len());
+    for item in list {{
+        let name = item
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let full_ref = item
+            .get("full_ref")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let current = item
+            .get("current")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let kind = match item.get("kind") {{
+            Some(kind_obj) => {{
+                let ty = kind_obj
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_ascii_lowercase();
+                match ty.as_str() {{
+                    "local" => api::BranchKind::Local,
+                    "remote" => api::BranchKind::Remote(
+                        kind_obj
+                            .get("remote")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                    ),
+                    _ => api::BranchKind::Unknown,
+                }}
+            }}
+            None => api::BranchKind::Unknown,
+        }};
+        out.push(api::BranchItem {{
+            name,
+            full_ref,
+            kind,
+            current,
+        }});
+    }}
+    Ok(out)
 }}
 
 struct Component;
@@ -439,7 +614,10 @@ fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<
         // component-model plugins that export the WIT ABI directly.
         if has_bin_target {
             match build_plugin_bin_target(plugin_dir, target_dir, bin, target) {
-                Ok(path) => return Ok(path),
+                Ok(path) => {
+                    ensure_component_module(&path)?;
+                    return Ok(path);
+                }
                 Err(bin_err) => {
                     errors.push(format!("{target}: bin: {bin_err}"));
                 }
@@ -449,7 +627,10 @@ fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<
         if has_plugin_entry {
             // Compatibility path for older plugin-runtime style crates.
             match build_plugin_shim_target(plugin_dir, target_dir, target) {
-                Ok(path) => return Ok(path),
+                Ok(path) => {
+                    ensure_component_module(&path)?;
+                    return Ok(path);
+                }
                 Err(shim_err) => errors.push(format!("{target}: shim: {shim_err}")),
             };
         }
@@ -463,6 +644,37 @@ fn build_plugin_wasi(plugin_dir: &Path, target_dir: &Path, bin: &str) -> Result<
             errors.join(" | ")
         ))
     }
+}
+
+fn is_component_module(bytes: &[u8]) -> Result<bool, String> {
+    for payload in Parser::new(0).parse_all(bytes) {
+        let payload = payload.map_err(|e| format!("parse wasm: {e}"))?;
+        if let Payload::Version { encoding, .. } = payload {
+            return Ok(matches!(encoding, Encoding::Component));
+        }
+    }
+    Err("unable to detect wasm encoding".to_string())
+}
+
+fn ensure_component_module(path: &Path) -> Result<(), String> {
+    let module = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    if is_component_module(&module)? {
+        return Ok(());
+    }
+
+    let component = ComponentEncoder::default()
+        .module(&module)
+        .map_err(|e| format!("componentize module {}: {e}", path.display()))?
+        .adapter(
+            "wasi_snapshot_preview1",
+            WASI_SNAPSHOT_PREVIEW1_REACTOR_ADAPTER,
+        )
+        .map_err(|e| format!("set preview1 adapter {}: {e}", path.display()))?
+        .validate(true)
+        .encode()
+        .map_err(|e| format!("encode component {}: {e}", path.display()))?;
+
+    fs::write(path, component).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 fn built_wasm_bin_path(target_dir: &Path, target: &str, bin: &str) -> PathBuf {
