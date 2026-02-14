@@ -15,7 +15,8 @@ It is a build/distribution utility crate, not a runtime plugin host.
 - `src/main.rs`: `openvcs-plugin` CLI entry.
 - `src/bin/cargo-openvcs.rs`: Cargo subcommand entry (`cargo openvcs ...`).
 - `src/lib.rs`: library exports.
-- `src/dist.rs`: bundle assembly and output logic.
+- `src/dist/mod.rs`: bundle assembly entrypoint plus dist-oriented modules (`args`, `manifest`, `fsops`, `bundle`).
+- `src/build/mod.rs`: build pipeline entrypoint plus build-oriented modules (`compile`, `wasm`, `shim`, `metadata`, `util`).
 
 ## Public Interfaces
 

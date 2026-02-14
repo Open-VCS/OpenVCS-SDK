@@ -1,10 +1,7 @@
 mod args;
-mod build;
 mod bundle;
 mod fsops;
 mod manifest;
-mod metadata;
-mod util;
 
 use std::env;
 use std::ffi::OsString;
@@ -15,13 +12,13 @@ pub use args::parse_args;
 pub use bundle::bundle_plugin;
 
 #[cfg(test)]
-pub(crate) use build::{built_wasm_bin_path, platform_exec_filename};
+pub(crate) use crate::build::CargoMetadata;
+#[cfg(test)]
+pub(crate) use crate::build::{built_wasm_bin_path, platform_exec_filename};
 #[cfg(test)]
 pub(crate) use fsops::{copy_dir_recursive, ICON_EXTENSIONS};
 #[cfg(test)]
 pub(crate) use manifest::{manifest_defaults, parse_manifest_text};
-#[cfg(test)]
-pub(crate) use metadata::CargoMetadata;
 
 #[derive(Debug)]
 pub struct PluginBuildArgs {

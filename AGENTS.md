@@ -3,7 +3,7 @@
 ## Project structure & module responsibilities
 - `src/main.rs` builds the `openvcs-plugin`/`openvcs-sdk` CLI used to manage plugin bundles and the `.ovcsp` archive format.
 - `src/bin/cargo-openvcs.rs` produces the `cargo-openvcs` subcommand that wraps the same bundling workflow.
-- Packaging logic (validation, manifest generation, signing) lives in `src/dist.rs`; `src/lib.rs` exports deterministic helpers consumed by the CLI and tests.
+- Packaging logic is split across `src/dist/` (CLI args, manifest parsing, bundle assembly) and `src/build/` (WASM/component build pipeline + shim generation); `src/lib.rs` exports helpers consumed by the CLI and tests.
 - Build outputs go under `dist/` (generated archives) and `target/` (Cargo artifacts).
 
 ## Architecture reference
@@ -12,7 +12,7 @@
 
 ## Build, test, and tooling commands
 - `cargo build` (compile SDK binaries/library).
-- `cargo test` (unit tests in `src/dist.rs` and supporting helpers).
+- `cargo test` (unit tests in `src/dist/tests.rs` and supporting helpers).
 - `cargo fmt --all`; keep formatting clean.
 - `cargo clippy --all-targets -- -D warnings`; CI enforces linting.
 - `just fix` runs `cargo fmt` + `cargo clippy --fix` for quick cleanup.
@@ -23,7 +23,7 @@
 - API surfaces should return rich error messages explaining path, capability, or validation issues.
 
 ## Testing guidelines
-- Keep tests next to the logic they cover (e.g., `src/dist.rs`). Name tests descriptively (e.g., `bundles_plugin_manifest`).
+- Keep tests next to the logic they cover (e.g., `src/dist/tests.rs`). Name tests descriptively (e.g., `bundles_plugin_manifest`).
 - Before PRs, run the formatter/linter/test trio from above.
 
 ## Commit & PR guidelines

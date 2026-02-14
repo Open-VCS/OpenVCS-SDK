@@ -1,4 +1,5 @@
-use crate::dist::{util::read_to_string, ManifestResult};
+use crate::build::read_to_string;
+use crate::dist::ManifestResult;
 use serde::Deserialize;
 use std::path::Path;
 
