@@ -7,7 +7,7 @@ Tooling for building and packaging OpenVCS plugins.
 
 ## `openvcs-plugin`
 - Bundle a plugin into a single `.ovcsp` tar.xz: `cargo run -- --plugin-dir /path/to/plugin`
-- Plugins must be Rust libraries with `src/plugin_entry.rs` defining `pub fn register_handlers()`.
+- Plugins must be Rust libraries with `src/lib.rs` using the `#[openvcs_plugin]` macro and `export_plugin!` macro to define the plugin ABI.
 - Plugin manifests must use `module.exec` (WASM) and/or `themes/`.
 
 ## Development
