@@ -1,4 +1,6 @@
-use crate::dist::fsops::{ICON_EXTENSIONS, copy_icon, unique_staging_dir, write_tar_xz};
+use crate::dist::fsops::{
+    ICON_EXTENSIONS, copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz,
+};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Cursor;
@@ -179,4 +181,15 @@ fn write_tar_xz_rejects_symlinks_in_archive() {
     let out_path = out_dir.join("bundle.tar.xz");
     let err = write_tar_xz(&out_path, &base_dir, folder_name).unwrap_err();
     assert!(err.contains("symlink"), "{err}");
+}
+
+#[test]
+fn copy_dir_recursive_errors_when_source_is_not_directory() {
+    let tmp = TempDir::new("copy_dir_not_dir");
+    let src = tmp.path.join("file.txt");
+    let dst = tmp.path.join("dst");
+    fs::write(&src, b"content").unwrap();
+
+    let err = copy_dir_recursive(&src, &dst).unwrap_err();
+    assert!(err.contains("expected directory"), "{err}");
 }

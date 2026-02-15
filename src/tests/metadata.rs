@@ -1,4 +1,5 @@
 use crate::build::metadata::package_name_for_manifest;
+use crate::build::metadata::resolve_target_dir;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -52,4 +53,11 @@ path = "lib.rs"
 
     let result = package_name_for_manifest(&tmp.path);
     assert_eq!(result, Some("test-plugin".to_string()));
+}
+
+#[test]
+fn resolve_target_dir_falls_back_to_local_target() {
+    let tmp = TempDir::new("resolve_target_no_cargo");
+    let result = resolve_target_dir(&tmp.path);
+    assert_eq!(result, tmp.path.join("target"));
 }

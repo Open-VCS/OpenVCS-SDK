@@ -65,6 +65,13 @@ fn is_component_module_detects_module() {
 }
 
 #[test]
+fn is_component_module_errors_on_malformed_wasm() {
+    let bad_bytes = vec![0x00, 0x61, 0x73, 0x6d, 0x99, 0x00];
+    let result = is_component_module(&bad_bytes);
+    assert!(result.is_err());
+}
+
+#[test]
 fn resolve_target_dir_parses_metadata_target_directory() {
     let metadata = br#"{"target_directory":"/tmp/openvcs-target"}"#;
     let parsed: CargoMetadata = serde_json::from_slice(metadata).unwrap();
