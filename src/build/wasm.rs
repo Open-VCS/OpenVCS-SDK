@@ -5,7 +5,7 @@ use wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADA
 use wasmparser::{Encoding, Parser, Payload};
 use wit_component::ComponentEncoder;
 
-fn is_component_module(bytes: &[u8]) -> Result<bool, String> {
+pub(crate) fn is_component_module(bytes: &[u8]) -> Result<bool, String> {
     for payload in Parser::new(0).parse_all(bytes) {
         let payload = payload.map_err(|e| format!("parse wasm: {e}"))?;
         if let Payload::Version { encoding, .. } = payload {

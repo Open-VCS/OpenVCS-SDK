@@ -1,7 +1,7 @@
-mod args;
-mod bundle;
-mod fsops;
-mod manifest;
+pub mod args;
+pub mod bundle;
+pub(crate) mod fsops;
+pub(crate) mod manifest;
 
 use std::env;
 use std::ffi::OsString;
@@ -10,15 +10,6 @@ use std::process::ExitCode;
 
 pub use args::parse_args;
 pub use bundle::bundle_plugin;
-
-#[cfg(test)]
-pub(crate) use crate::build::CargoMetadata;
-#[cfg(test)]
-pub(crate) use crate::build::{built_wasm_bin_path, platform_exec_filename};
-#[cfg(test)]
-pub(crate) use fsops::{ICON_EXTENSIONS, copy_dir_recursive};
-#[cfg(test)]
-pub(crate) use manifest::{manifest_defaults, parse_manifest_text};
 
 #[derive(Debug)]
 pub struct PluginBuildArgs {
@@ -52,6 +43,3 @@ pub fn run_plugin_cli() -> ExitCode {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

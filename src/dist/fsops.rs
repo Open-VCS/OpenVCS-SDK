@@ -12,7 +12,7 @@ pub(crate) fn unique_staging_dir(out_dir: &Path) -> PathBuf {
     out_dir.join(format!(".openvcs-plugin-staging-{now}"))
 }
 
-fn reject_symlinks_recursive(dir: &Path) -> Result<(), String> {
+pub(crate) fn reject_symlinks_recursive(dir: &Path) -> Result<(), String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
