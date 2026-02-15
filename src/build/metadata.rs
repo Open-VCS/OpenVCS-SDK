@@ -5,19 +5,19 @@ use std::process::Command;
 #[derive(Debug, Deserialize)]
 pub(crate) struct CargoMetadata {
     pub(crate) target_directory: PathBuf,
+    #[serde(default)]
+    pub(crate) packages: Vec<CargoMetadataPackage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct CargoMetadataPackage {
+    pub(crate) name: String,
     #[cfg(test)]
     #[serde(default)]
-    packages: Vec<CargoMetadataPackage>,
+    pub(crate) manifest_path: String,
 }
 
-#[cfg(test)]
-#[derive(Debug, Deserialize)]
-struct CargoMetadataPackage {
-    name: String,
-    manifest_path: String,
-}
-
-fn cargo_metadata(plugin_dir: &Path) -> Option<CargoMetadata> {
+pub(crate) fn cargo_metadata(plugin_dir: &Path) -> Option<CargoMetadata> {
     let manifest_path = plugin_dir.join("Cargo.toml");
     let output = Command::new("cargo")
         .arg("metadata")

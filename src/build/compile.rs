@@ -1,3 +1,4 @@
+use crate::build::metadata::cargo_metadata;
 use crate::build::wasm::ensure_component_module;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -59,7 +60,10 @@ pub(crate) fn build_plugin_wasi(
 }
 
 fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Result<PathBuf, String> {
-    let release_dir = target_dir.join("release");
+    let pkg_name = get_crate_name(plugin_dir)?;
+    let wasm_name = format!("{}.wasm", pkg_name.replace('-', "_"));
+    let release_dir = target_dir.join(target).join("release");
+    let wasm_path = release_dir.join(&wasm_name);
 
     let mut cmd = Command::new("cargo");
     cmd.current_dir(plugin_dir);
@@ -80,11 +84,21 @@ fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Resul
         return Err(format!("build failed: {}", stderr));
     }
 
-    let wasm_path = release_dir.join(target).join("libplugin.wasm");
-
     if !wasm_path.exists() {
         return Err(format!("expected wasm at {}", wasm_path.display()));
     }
 
     Ok(wasm_path)
+}
+
+fn get_crate_name(plugin_dir: &Path) -> Result<String, String> {
+    let metadata =
+        cargo_metadata(plugin_dir).ok_or_else(|| "failed to get cargo metadata".to_string())?;
+
+    metadata
+        .packages
+        .into_iter()
+        .next()
+        .map(|p| p.name)
+        .ok_or_else(|| "no packages found in cargo metadata".to_string())
 }
