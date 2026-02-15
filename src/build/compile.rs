@@ -1,4 +1,4 @@
-use crate::build::wasm::{ensure_component_module, platform_exec_filename};
+use crate::build::wasm::ensure_component_module;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -80,7 +80,6 @@ fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Resul
         return Err(format!("build failed: {}", stderr));
     }
 
-    let exec_name = platform_exec_filename("plugin");
     let wasm_path = release_dir.join(target).join("libplugin.wasm");
 
     if !wasm_path.exists() {

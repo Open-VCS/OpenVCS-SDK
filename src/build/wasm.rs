@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADAPTER;
 use wasmparser::{Encoding, Parser, Payload};
 use wit_component::ComponentEncoder;
@@ -36,14 +36,6 @@ pub(crate) fn ensure_component_module(path: &Path) -> Result<(), String> {
     fs::write(path, component).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
-pub(crate) fn built_wasm_bin_path(target_dir: &Path, target: &str, bin: &str) -> PathBuf {
-    let mut p = target_dir.to_path_buf();
-    p.push(target);
-    p.push("release");
-    p.push(format!("{bin}.wasm"));
-    p
-}
-
 pub(crate) fn ensure_wasm_magic(path: &Path) -> Result<(), String> {
     let mut f = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
     let mut magic = [0u8; 4];
@@ -59,10 +51,23 @@ pub(crate) fn ensure_wasm_magic(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+use std::path::PathBuf;
+
+#[cfg(test)]
 pub(crate) fn platform_exec_filename(exec: &str) -> String {
     let exec = exec.trim();
     if exec.is_empty() {
         return String::new();
     }
     exec.to_string()
+}
+
+#[cfg(test)]
+pub(crate) fn built_wasm_bin_path(target_dir: &Path, target: &str, bin: &str) -> PathBuf {
+    let mut p = target_dir.to_path_buf();
+    p.push(target);
+    p.push("release");
+    p.push(format!("{bin}.wasm"));
+    p
 }

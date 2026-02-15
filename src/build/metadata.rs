@@ -5,10 +5,12 @@ use std::process::Command;
 #[derive(Debug, Deserialize)]
 pub(crate) struct CargoMetadata {
     pub(crate) target_directory: PathBuf,
+    #[cfg(test)]
     #[serde(default)]
     packages: Vec<CargoMetadataPackage>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct CargoMetadataPackage {
     name: String,
@@ -40,6 +42,7 @@ pub(crate) fn resolve_target_dir(plugin_dir: &Path) -> PathBuf {
         .unwrap_or_else(|| plugin_dir.join("target"))
 }
 
+#[cfg(test)]
 pub(crate) fn package_name_for_manifest(plugin_dir: &Path) -> Option<String> {
     let manifest_path = plugin_dir.join("Cargo.toml");
     let manifest = manifest_path.to_string_lossy().replace('\\', "/");

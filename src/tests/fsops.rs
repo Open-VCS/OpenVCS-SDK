@@ -1,5 +1,5 @@
 use crate::dist::fsops::{
-    ICON_EXTENSIONS, copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz,
+    copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz, ICON_EXTENSIONS,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -37,13 +37,11 @@ fn unique_staging_dir_creates_valid_path() {
     let staging = unique_staging_dir(&out_dir);
 
     assert!(staging.starts_with(&out_dir));
-    assert!(
-        staging
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n.starts_with(".openvcs-plugin-staging-"))
-            .unwrap_or(false)
-    );
+    assert!(staging
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.starts_with(".openvcs-plugin-staging-"))
+        .unwrap_or(false));
 }
 
 #[test]
