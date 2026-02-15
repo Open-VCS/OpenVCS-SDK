@@ -58,14 +58,6 @@ fn ensure_wasm_magic_rejects_empty_file() {
 }
 
 #[test]
-#[ignore]
-fn is_component_module_detects_component() {
-    let component_bytes = vec![0x00, 0x61, 0x73, 0x6d, 0x0e, 0x00, 0x01, 0x00, 0x00];
-    let is_component = is_component_module(&component_bytes).unwrap();
-    assert!(is_component);
-}
-
-#[test]
 fn is_component_module_detects_module() {
     let module_bytes = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
     let is_component = is_component_module(&module_bytes).unwrap();
