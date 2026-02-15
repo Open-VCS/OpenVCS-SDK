@@ -1,8 +1,8 @@
 use crate::build::resolve_target_dir;
 use crate::build::{build_plugin_wasi, ensure_wasm_magic, platform_exec_filename};
+use crate::dist::PluginBuildArgs;
 use crate::dist::fsops::{copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz};
 use crate::dist::manifest::manifest_defaults;
-use crate::dist::PluginBuildArgs;
 use std::fs;
 use std::path::PathBuf;
 

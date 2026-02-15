@@ -16,7 +16,7 @@ pub(crate) use crate::build::CargoMetadata;
 #[cfg(test)]
 pub(crate) use crate::build::{built_wasm_bin_path, platform_exec_filename};
 #[cfg(test)]
-pub(crate) use fsops::{copy_dir_recursive, ICON_EXTENSIONS};
+pub(crate) use fsops::{ICON_EXTENSIONS, copy_dir_recursive};
 #[cfg(test)]
 pub(crate) use manifest::{manifest_defaults, parse_manifest_text};
 
