@@ -1,3 +1,26 @@
+//! `cargo openvcs` subcommand binary.
+//!
+//! This binary provides the `cargo openvcs dist` command for bundling OpenVCS plugins.
+//! It can be invoked as either `cargo openvcs dist` or `cargo-openvcs dist`.
+//!
+//! # Usage
+//!
+//! ```text
+//! cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--all] [--fix]
+//! ```
+//!
+//! # Options
+//!
+//! - `--plugin-dir <path>` - Bundle a specific plugin directory
+//! - `--out <path>` - Output directory (default: `./dist`)
+//! - `--all` - Bundle all plugins found in subdirectories
+//! - `--fix` - Run `cargo fix` before bundling (Rust plugins only)
+//!
+//! # Exit Codes
+//!
+//! - `0` - Success
+//! - `1` - Error
+
 use openvcs_sdk::dist::{PluginBuildArgs, bundle_plugin};
 use std::env;
 use std::ffi::OsString;
@@ -5,6 +28,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+/// Prints usage information to stderr.
 fn print_usage() {
     eprintln!(
         "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--fix]
@@ -21,14 +45,34 @@ Options:
     );
 }
 
+/// Checks if a directory contains a plugin manifest.
+///
+/// Returns true if `openvcs.plugin.json` exists in the directory.
 fn is_plugin_dir(dir: &Path) -> bool {
     dir.join("openvcs.plugin.json").is_file()
 }
 
+/// Checks if a directory contains a Rust plugin.
+///
+/// Returns true if `Cargo.toml` exists in the directory,
+/// indicating this is a Rust-based plugin that can be built.
 fn is_rust_plugin_dir(dir: &Path) -> bool {
     dir.join("Cargo.toml").is_file()
 }
 
+/// Discovers all plugin directories in a root directory.
+///
+/// Scans subdirectories of the given root and returns paths that
+/// contain valid plugin manifests (`openvcs.plugin.json`).
+///
+/// # Arguments
+///
+/// * `root` - Root directory to scan
+///
+/// # Returns
+///
+/// Returns `Ok(Vec<PathBuf>)` with sorted list of plugin directories,
+/// or `Err(String)` if scanning fails.
 fn discover_plugin_dirs(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     for entry in fs::read_dir(root).map_err(|e| format!("read_dir {}: {e}", root.display()))? {
@@ -45,6 +89,18 @@ fn discover_plugin_dirs(root: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+/// Runs `cargo fix` in the specified plugin directory.
+///
+/// Attempts to fix the plugin code before bundling. First tries
+/// `wasm32-wasip1` target, then falls back to host target if unavailable.
+///
+/// # Arguments
+///
+/// * `dir` - Path to the plugin directory
+///
+/// # Returns
+///
+/// Returns `Ok(())` if cargo fix succeeds, or `Err(String)` on failure.
 fn run_cargo_fix(dir: &Path) -> Result<(), String> {
     let mut cmd = std::process::Command::new("cargo");
     cmd.current_dir(dir);
@@ -81,6 +137,16 @@ fn run_cargo_fix(dir: &Path) -> Result<(), String> {
     }
 }
 
+/// Processes the `dist` command arguments and bundles plugins.
+///
+/// # Arguments
+///
+/// * `args` - Command-line arguments following `dist`
+///
+/// # Returns
+///
+/// Returns `Ok(Vec<PathBuf>)` containing paths to created bundles,
+/// or `Err(String)` on failure.
 fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     let cwd =
         env::current_dir().map_err(|e| format!("failed to determine current directory: {e}"))?;
@@ -163,6 +229,9 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     Ok(out_paths)
 }
 
+/// Entry point for the `cargo openvcs` subcommand.
+///
+/// Handles the `dist` subcommand and routes to [`run_dist_command`].
 fn main() -> ExitCode {
     let mut args: Vec<OsString> = env::args_os().skip(1).collect();
     // Some environments may invoke `cargo-openvcs` as `cargo openvcs ...` but still pass

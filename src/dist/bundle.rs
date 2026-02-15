@@ -1,11 +1,51 @@
 use crate::build::resolve_target_dir;
 use crate::build::{build_plugin_wasi, ensure_wasm_magic};
+use crate::dist::PluginBuildArgs;
 use crate::dist::fsops::{copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz};
 use crate::dist::manifest::manifest_defaults;
-use crate::dist::PluginBuildArgs;
 use std::fs;
 use std::path::PathBuf;
 
+/// Builds and bundles a plugin into a distributable `.ovcsp` archive.
+///
+/// This function performs the complete bundling workflow:
+///
+/// 1. **Parse manifest** - Reads `openvcs.plugin.json` to get plugin ID and exec path
+/// 2. **Build WASM** - Compiles `src/lib.rs` to `wasm32-wasip1` (if module.exec is set)
+/// 3. **Validate** - Ensures the built WASM is a valid component module
+/// 4. **Copy assets** - Copies icon (if present) and themes directory (if present)
+/// 5. **Create archive** - Packages everything into a tar.xz archive
+///
+/// # Arguments
+///
+/// * `args` - Build arguments containing `plugin_dir` and `out_dir`
+///
+/// # Returns
+///
+/// Returns `Ok(PathBuf)` pointing to the created `.ovcsp` bundle, or `Err(String)` on failure.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The manifest is missing or has no `id` field
+/// - The manifest has no `module.exec` and no `themes/` directory
+/// - WASM build fails
+/// - The built WASM is not a valid component
+/// - Asset copying fails
+/// - Archive creation fails
+///
+/// # Output Format
+///
+/// The bundle is a tar.xz archive containing:
+///
+/// ```text
+/// {plugin-id}/
+///   openvcs.plugin.json
+///   icon.{ext}           # if present
+///   themes/              # if present
+///   bin/
+///     plugin.wasm        # if module.exec was specified
+/// ```
 pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
     let (manifest_id, module_exec) = manifest_defaults(&args.plugin_dir)?;
     let plugin_id = manifest_id;

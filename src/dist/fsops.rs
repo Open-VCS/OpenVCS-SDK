@@ -1,9 +1,29 @@
+//! Filesystem operations for plugin bundling.
+//!
+//! Provides utilities for staging, copying, and archiving plugin files.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Supported icon file extensions.
+///
+/// Plugins may include an icon file named `icon.{ext}` where ext is one
+/// of these values.
 pub(crate) const ICON_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "avif", "svg"];
 
+/// Creates a unique staging directory for bundle creation.
+///
+/// Uses the current timestamp in milliseconds to create a directory
+/// that is unlikely to conflict with concurrent builds.
+///
+/// # Arguments
+///
+/// * `out_dir` - Parent directory for the staging directory
+///
+/// # Returns
+///
+/// Path to the created staging directory (e.g., `.openvcs-plugin-staging-1234567890`)
 pub(crate) fn unique_staging_dir(out_dir: &Path) -> PathBuf {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -12,6 +32,21 @@ pub(crate) fn unique_staging_dir(out_dir: &Path) -> PathBuf {
     out_dir.join(format!(".openvcs-plugin-staging-{now}"))
 }
 
+/// Recursively checks that a directory contains no symlinks.
+///
+/// This is a security measure to prevent symlink attacks in plugin bundles.
+///
+/// # Arguments
+///
+/// * `dir` - Directory to check
+///
+/// # Returns
+///
+/// Returns `Ok(())` if no symlinks are found, or `Err(String)` if a symlink exists.
+///
+/// # Errors
+///
+/// Returns an error if any file or subdirectory is a symbolic link.
 pub(crate) fn reject_symlinks_recursive(dir: &Path) -> Result<(), String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?;
     for entry in entries {
@@ -29,6 +64,24 @@ pub(crate) fn reject_symlinks_recursive(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Creates a tar.xz archive from a directory.
+///
+/// # Arguments
+///
+/// * `out_path` - Path for the output `.tar.xz` file
+/// * `base_dir` - Base directory containing the folder to archive
+/// * `folder_name` - Name of the folder to archive (relative to base_dir)
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or `Err(String)` on failure.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The directory contains symlinks (security check)
+/// - File operations fail
+/// - Tar or xz encoding fails
 pub(crate) fn write_tar_xz(
     out_path: &Path,
     base_dir: &Path,
@@ -54,6 +107,23 @@ pub(crate) fn write_tar_xz(
     Ok(())
 }
 
+/// Recursively copies a directory tree.
+///
+/// # Arguments
+///
+/// * `src` - Source directory to copy from
+/// * `dst` - Destination directory to copy to
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or `Err(String)` on failure.
+///
+/// # Behavior
+///
+/// - Creates the destination directory if it doesn't exist
+/// - Copies all files and subdirectories recursively
+/// - Does nothing if source doesn't exist
+/// - Returns an error if source is not a directory
 pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     if !src.exists() {
         return Ok(());
@@ -82,6 +152,24 @@ pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Copies the plugin icon to the bundle directory.
+///
+/// Searches for an icon file in the plugin root using supported extensions
+/// (`icon.png`, `icon.jpg`, etc.) and copies the first found to the bundle.
+///
+/// # Arguments
+///
+/// * `plugin_dir` - Path to the plugin root directory
+/// * `bundle_dir` - Path to the bundle staging directory
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success (or if no icon found), or `Err(String)` on failure.
+///
+/// # Note
+///
+/// If no icon is found, this function succeeds silently. This allows plugins
+/// to be bundled without icons.
 pub(crate) fn copy_icon(plugin_dir: &Path, bundle_dir: &Path) -> Result<(), String> {
     for ext in ICON_EXTENSIONS {
         let name = format!("icon.{ext}");

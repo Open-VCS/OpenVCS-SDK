@@ -1,8 +1,18 @@
+//! Plugin compilation utilities.
+//!
+//! Provides functions for building WASM plugins targeting the wasip1 ABI.
+
 use crate::build::metadata::cargo_metadata;
 use crate::build::wasm::ensure_component_module;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Queries rustc for the list of available compilation targets.
+///
+/// # Returns
+///
+/// Returns `Some(Vec<String>)` with target names on success,
+/// or `None` if the query fails.
 fn rustc_target_list() -> Option<Vec<String>> {
     let out = Command::new("rustc")
         .args(["--print", "target-list"])
@@ -21,6 +31,28 @@ fn rustc_target_list() -> Option<Vec<String>> {
     )
 }
 
+/// Builds a plugin as a WASI WebAssembly module.
+///
+/// Attempts to compile the plugin to `wasm32-wasip1`, falling back to
+/// `wasm32-wasi` if the newer target is unavailable.
+///
+/// # Arguments
+///
+/// * `plugin_dir` - Path to the plugin root (must contain `src/lib.rs`)
+/// * `target_dir` - Cargo target directory
+/// * `_bin` - Binary name (unused, retained for API compatibility)
+///
+/// # Returns
+///
+/// Returns `Ok(PathBuf)` pointing to the built `.wasm` file, or `Err(String)` on failure.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No WASI target is available
+/// - `src/lib.rs` is missing
+/// - Cargo build fails
+/// - The result is not a valid WASM component
 pub(crate) fn build_plugin_wasi(
     plugin_dir: &Path,
     target_dir: &Path,
@@ -54,11 +86,20 @@ pub(crate) fn build_plugin_wasi(
         }
     }
 
-    Err(format!(
-        "failed to build plugin for wasm32-wasip1 or wasm32-wasi"
-    ))
+    Err("failed to build plugin for wasm32-wasip1 or wasm32-wasi".to_string())
 }
 
+/// Builds the plugin library for a specific target.
+///
+/// # Arguments
+///
+/// * `plugin_dir` - Path to the plugin root
+/// * `target_dir` - Cargo target directory
+/// * `target` - Target triple (e.g., `wasm32-wasip1`)
+///
+/// # Returns
+///
+/// Returns `Ok(PathBuf)` to the built WASM file, or `Err(String)` on failure.
 fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Result<PathBuf, String> {
     let pkg_name = get_crate_name(plugin_dir)?;
     let wasm_name = format!("{}.wasm", pkg_name.replace('-', "_"));
@@ -91,6 +132,15 @@ fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Resul
     Ok(wasm_path)
 }
 
+/// Extracts the crate name from a plugin's Cargo.toml.
+///
+/// # Arguments
+///
+/// * `plugin_dir` - Path to the plugin root
+///
+/// # Returns
+///
+/// Returns `Ok(String)` with the package name, or `Err(String)` on failure.
 fn get_crate_name(plugin_dir: &Path) -> Result<String, String> {
     let metadata =
         cargo_metadata(plugin_dir).ok_or_else(|| "failed to get cargo metadata".to_string())?;

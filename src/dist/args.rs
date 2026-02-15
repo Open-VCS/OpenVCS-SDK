@@ -3,6 +3,10 @@ use std::env;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+/// Returns the usage string for the plugin CLI.
+///
+/// This text is displayed when the user passes `--help` or provides
+/// invalid arguments.
 pub(crate) fn usage() -> &'static str {
     "openvcs-plugin [args]\n\
 \n\
@@ -19,6 +23,27 @@ fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
     Ok(args.remove(0).to_string_lossy().to_string())
 }
 
+/// Parses command-line arguments into [`PluginBuildArgs`].
+///
+/// # Arguments
+///
+/// * `args` - Command-line arguments (typically from `std::env::args_os()`)
+///
+/// # Supported Flags
+///
+/// * `--plugin-dir <path>` - Path to the plugin root directory
+/// * `--out <path>` - Output directory (default: `./dist`)
+/// * `--help` - Display usage information
+///
+/// # Returns
+///
+/// Returns `Ok(PluginBuildArgs)` on success, or `Err(String)` containing
+/// an error message (which may be the usage text for `--help`).
+///
+/// # Defaults
+///
+/// If `--plugin-dir` is not provided, defaults to the current working directory.
+/// If `--out` is not provided, defaults to `./dist`.
 pub fn parse_args(mut args: Vec<OsString>) -> Result<PluginBuildArgs, String> {
     let mut plugin_dir: Option<PathBuf> = None;
     let mut out_dir: PathBuf = PathBuf::from("dist");

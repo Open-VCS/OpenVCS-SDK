@@ -1,4 +1,4 @@
-use crate::dist::fsops::{copy_dir_recursive, ICON_EXTENSIONS};
+use crate::dist::fsops::{ICON_EXTENSIONS, copy_dir_recursive};
 use crate::dist::manifest::parse_manifest_text;
 use std::collections::BTreeMap;
 use std::io::Cursor;

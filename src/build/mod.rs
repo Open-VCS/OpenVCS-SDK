@@ -1,3 +1,15 @@
+//! Plugin build pipeline utilities.
+//!
+//! This module provides internal utilities for building plugin WASM modules,
+//! resolving cargo metadata, and validating WASM binaries.
+//!
+//! # Modules
+//!
+//! - `compile` - WASM compilation and build orchestration
+//! - `metadata` - Cargo metadata extraction
+//! - `util` - Shared helper functions
+//! - `wasm` - WASM validation and component encoding
+
 pub(crate) mod compile;
 pub(crate) mod metadata;
 pub(crate) mod util;
