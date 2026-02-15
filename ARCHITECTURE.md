@@ -16,7 +16,7 @@ It is a build/distribution utility crate, not a runtime plugin host.
 - `src/bin/cargo-openvcs.rs`: Cargo subcommand entry (`cargo openvcs ...`).
 - `src/lib.rs`: library exports.
 - `src/dist/mod.rs`: bundle assembly entrypoint plus dist-oriented modules (`args`, `manifest`, `fsops`, `bundle`).
-- `src/build/mod.rs`: build pipeline entrypoint plus build-oriented modules (`compile`, `wasm`, `shim`, `metadata`, `util`).
+- `src/build/mod.rs`: build pipeline entrypoint plus build-oriented modules (`compile`, `wasm`, `metadata`, `util`).
 
 ## Public Interfaces
 
@@ -37,7 +37,7 @@ Primary concern:
 
 - SDK should remain focused on packaging workflows.
 - Output artifacts must match structure expected by host bundle installer.
-- Manifest `entry` fields are rejected; plugins must be libraries with `src/plugin_entry.rs` that package WASM components and/or `themes/`.
+- Manifest `entry` fields are rejected; plugins must be libraries with `src/lib.rs` that export plugin ABI via `#[openvcs_plugin]` and `export_plugin!`.
 
 ## Cross-Cutting Concerns
 

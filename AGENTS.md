@@ -3,7 +3,7 @@
 ## Project structure & module responsibilities
 - `src/main.rs` builds the `openvcs-plugin`/`openvcs-sdk` CLI used to manage plugin bundles and the `.ovcsp` archive format.
 - `src/bin/cargo-openvcs.rs` produces the `cargo-openvcs` subcommand that wraps the same bundling workflow.
-- Packaging logic is split across `src/dist/` (CLI args, manifest parsing, bundle assembly) and `src/build/` (WASM/component build pipeline + shim generation); `src/lib.rs` exports helpers consumed by the CLI and tests.
+- Packaging logic is split across `src/dist/` (CLI args, manifest parsing, bundle assembly) and `src/build/` (WASM build pipeline); `src/lib.rs` exports helpers consumed by the CLI and tests.
 - Build outputs go under `dist/` (generated archives) and `target/` (Cargo artifacts).
 
 ## Architecture reference

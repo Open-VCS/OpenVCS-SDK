@@ -1,6 +1,5 @@
 pub(crate) mod compile;
 pub(crate) mod metadata;
-pub(crate) mod shim;
 pub(crate) mod util;
 pub(crate) mod wasm;
 

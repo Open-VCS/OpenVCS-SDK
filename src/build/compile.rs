@@ -1,5 +1,4 @@
-use crate::build::shim::build_plugin_shim_target;
-use crate::build::wasm::ensure_component_module;
+use crate::build::wasm::{ensure_component_module, platform_exec_filename};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -41,27 +40,52 @@ pub(crate) fn build_plugin_wasi(
         return Err("no supported WASI targets found (expected wasm32-wasip1)".to_string());
     }
 
-    let has_plugin_entry = plugin_dir.join("src").join("plugin_entry.rs").is_file();
-    if !has_plugin_entry {
-        return Err(
-            "missing src/plugin_entry.rs - plugins must be libraries with plugin_entry.rs"
-                .to_string(),
-        );
+    let has_lib = plugin_dir.join("src").join("lib.rs").is_file();
+    if !has_lib {
+        return Err("missing src/lib.rs - plugins must be libraries with lib.rs".to_string());
     }
 
-    let mut errors = Vec::new();
     for target in targets {
-        match build_plugin_shim_target(plugin_dir, target_dir, target) {
-            Ok(path) => {
-                ensure_component_module(&path)?;
-                return Ok(path);
-            }
-            Err(shim_err) => errors.push(format!("{target}: shim: {shim_err}")),
-        };
+        let result = build_plugin_lib(plugin_dir, target_dir, target);
+        if let Ok(wasm_path) = result {
+            ensure_component_module(&wasm_path)?;
+            return Ok(wasm_path);
+        }
     }
 
     Err(format!(
-        "failed to build plugin for wasm32-wasip1 or wasm32-wasi ({})",
-        errors.join(" | ")
+        "failed to build plugin for wasm32-wasip1 or wasm32-wasi"
     ))
+}
+
+fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Result<PathBuf, String> {
+    let release_dir = target_dir.join("release");
+
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(plugin_dir);
+    cmd.arg("build");
+    cmd.arg("--lib");
+    cmd.arg("--release");
+    cmd.arg("--target");
+    cmd.arg(target);
+    cmd.arg("--manifest-path");
+    cmd.arg(plugin_dir.join("Cargo.toml"));
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("cargo build failed: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("build failed: {}", stderr));
+    }
+
+    let exec_name = platform_exec_filename("plugin");
+    let wasm_path = release_dir.join(target).join("libplugin.wasm");
+
+    if !wasm_path.exists() {
+        return Err(format!("expected wasm at {}", wasm_path.display()));
+    }
+
+    Ok(wasm_path)
 }
