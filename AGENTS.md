@@ -16,7 +16,7 @@
 - `cargo fmt --all`; keep formatting clean.
 - `cargo clippy --all-targets -- -D warnings`; CI enforces linting.
 - `just fix` runs `cargo fmt` + `cargo clippy --fix` for quick cleanup.
-- `cargo run -p openvcs-sdk -- --plugin-dir /path/to/plugin` to produce a `.ovcsp` bundle for manual verification.
+- `cargo run -- --plugin-dir /path/to/plugin` to produce a `.ovcsp` bundle for manual verification.
 
 ## Coding style & conventions
 - Follow default Rust formatting (`rustfmt`/`cargo fmt`). Use 4-space indentation in Rust sources, `snake_case` for functions/modules, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.

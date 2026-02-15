@@ -37,7 +37,7 @@ Primary concern:
 
 - SDK should remain focused on packaging workflows.
 - Output artifacts must match structure expected by host bundle installer.
-- Manifest `entry` fields are rejected; plugins must package WASM components and/or `themes/`.
+- Manifest `entry` fields are rejected; plugins must be libraries with `src/plugin_entry.rs` that package WASM components and/or `themes/`.
 
 ## Cross-Cutting Concerns
 
