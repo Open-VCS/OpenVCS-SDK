@@ -2,6 +2,7 @@
 name = "openvcs-sdk"
 version = "0.2.0"
 edition = "2024"
+default-run = "openvcs-plugin"
 description = "SDK for building/bundling OpenVCS plugins and packaging them as .ovcsp bundles."
 license = "GPL-3.0-or-later"
 homepage = "https://bbgames.dev/"
