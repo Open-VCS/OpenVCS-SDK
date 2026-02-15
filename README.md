@@ -15,3 +15,7 @@ Tooling for building and packaging OpenVCS plugins.
 - CI enforces: `cargo fmt --all -- --check`
 - CI also runs: `cargo clippy --all-targets -- -D warnings`
 - Convenience (if you have `just` installed): `just fix`
+
+## License
+
+Copyright © 2025-2026 OpenVCS Contributors. SPDX-License-Identifier: GPL-3.0-or-later
