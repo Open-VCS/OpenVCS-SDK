@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::build::util::{find_local_core_path, has_pub_fn, toml_escape};
 use std::fs;
 use std::path::PathBuf;

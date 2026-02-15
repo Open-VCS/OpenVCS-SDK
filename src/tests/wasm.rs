@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::build::metadata::CargoMetadata;
 use crate::build::wasm::{built_wasm_bin_path, ensure_wasm_magic, is_component_module};
 use std::fs;

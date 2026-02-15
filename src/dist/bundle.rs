@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::build::resolve_target_dir;
 use crate::build::{build_plugin_wasi, ensure_wasm_magic};
 use crate::dist::PluginBuildArgs;

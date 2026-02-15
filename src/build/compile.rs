@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Plugin compilation utilities.
 //!
 //! Provides functions for building WASM plugins targeting the wasip1 ABI.

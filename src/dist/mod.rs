@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Plugin distribution and bundling utilities.
 //!
 //! This module provides the core functionality for packaging OpenVCS plugins

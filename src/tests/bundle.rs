@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::dist::fsops::{ICON_EXTENSIONS, copy_dir_recursive};
 use crate::dist::manifest::parse_manifest_text;
 use std::collections::BTreeMap;

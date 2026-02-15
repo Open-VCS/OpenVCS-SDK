@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Shared utility functions.
 //!
 //! Provides helper functions used across the build pipeline.

@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! `cargo openvcs` subcommand binary.
 //!
 //! This binary provides the `cargo openvcs dist` command for bundling OpenVCS plugins.

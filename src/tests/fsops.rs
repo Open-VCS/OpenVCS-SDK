@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::dist::fsops::{
     ICON_EXTENSIONS, copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz,
 };

@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::build::wasm::platform_exec_filename;
 use crate::dist::args::parse_args;
 use std::env;

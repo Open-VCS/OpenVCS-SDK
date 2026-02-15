@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::build::metadata::package_name_for_manifest;
 use crate::build::metadata::resolve_target_dir;
 use std::fs;

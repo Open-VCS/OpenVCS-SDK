@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Filesystem operations for plugin bundling.
 //!
 //! Provides utilities for staging, copying, and archiving plugin files.

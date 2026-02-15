@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! OpenVCS Plugin SDK CLI binary.
 //!
 //! This binary provides the `openvcs-plugin` command for bundling OpenVCS plugins.

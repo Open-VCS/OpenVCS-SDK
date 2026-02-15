@@ -1,3 +1,6 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::dist::manifest::{manifest_defaults, parse_manifest_text};
 use std::env;
 use std::fs;
