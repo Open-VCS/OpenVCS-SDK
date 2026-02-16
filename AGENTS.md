@@ -22,6 +22,17 @@
 - Follow default Rust formatting (`rustfmt`/`cargo fmt`). Use 4-space indentation in Rust sources, `snake_case` for functions/modules, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.
 - API surfaces should return rich error messages explaining path, capability, or validation issues.
 
+## Documentation & licensing
+
+- All new Rust source files must include a license header:
+  ```rust
+  // Copyright © 2025-2026 OpenVCS Contributors
+  // SPDX-License-Identifier: GPL-3.0-or-later
+  ```
+- All public API items (functions, structs, enums, traits, modules) must have doc comments (`///`).
+- Add module-level docs (`//!`) to new modules explaining their purpose.
+- Run `cargo doc --no-deps` to verify documentation builds without warnings.
+
 ## Testing guidelines
 - Keep tests next to the logic they cover (e.g., `src/tests/`). Name tests descriptively (e.g., `bundles_plugin_manifest`).
 - Before PRs, run the formatter/linter/test trio from above.
