@@ -3,9 +3,9 @@
 
 use crate::build::resolve_target_dir;
 use crate::build::{build_plugin_wasi, ensure_wasm_magic};
-use crate::dist::PluginBuildArgs;
 use crate::dist::fsops::{copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz};
 use crate::dist::manifest::manifest_defaults;
+use crate::dist::PluginBuildArgs;
 use std::fs;
 use std::path::PathBuf;
 
@@ -47,7 +47,7 @@ use std::path::PathBuf;
 ///   icon.{ext}           # if present
 ///   themes/              # if present
 ///   bin/
-///     plugin.wasm        # if module.exec was specified
+///     {exec}              # if module.exec was specified
 /// ```
 pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
     let (manifest_id, module_exec) = manifest_defaults(&args.plugin_dir)?;
@@ -111,7 +111,7 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
             ));
         }
         ensure_wasm_magic(&bin_src)?;
-        let bin_dst = bin_dir.join("plugin.wasm");
+        let bin_dst = bin_dir.join(&exec);
         fs::copy(&bin_src, &bin_dst).map_err(|e| {
             format!(
                 "failed to copy wasm {} -> {}: {e}",
