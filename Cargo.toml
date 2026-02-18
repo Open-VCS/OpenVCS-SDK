@@ -38,6 +38,6 @@ tar = "0.4"
 xz2 = "0.1"
 wasmparser = "0.245"
 wasm-encoder = "0.245"
-wit-component = "0.245"
+wit-component = { version = "0.245", features = ["dummy-module"] }
 wit-parser = "0.245"
 wasi-preview1-component-adapter-provider = "41"
