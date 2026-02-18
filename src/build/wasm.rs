@@ -8,10 +8,13 @@
 
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADAPTER;
 use wasmparser::{Encoding, Parser, Payload};
-use wit_component::ComponentEncoder;
+use wit_component::{ComponentEncoder, StringEncoding};
+
+const DEFAULT_WORLD_NAME: &str = "plugin";
+const DEFAULT_WORLD_WIT_DIR: &str = "../Core/wit";
 
 /// Checks if a WASM binary is a component module.
 ///
@@ -59,8 +62,49 @@ pub(crate) fn ensure_component_module(path: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    let component = ComponentEncoder::default()
-        .module(&module)
+    let component = match encode_component_module(&module, path) {
+        Ok(component) => component,
+        Err(original_error) => {
+            let sanitized = strip_component_type_custom_sections(&module)
+                .map_err(|sanitize_error| {
+                    format!(
+                        "encode component {}: {original_error}; failed to sanitize embedded component metadata sections: {sanitize_error}",
+                        path.display()
+                    )
+                })?;
+
+            let with_metadata = embed_default_world_metadata(&sanitized).map_err(|embed_error| {
+                format!(
+                    "encode component {}: {original_error}; fallback metadata embedding failed: {embed_error}",
+                    path.display()
+                )
+            })?;
+
+            encode_component_module(&with_metadata, path).map_err(|retry_error| {
+                format!(
+                    "encode component {} after metadata embedding failed: {retry_error}; original error: {original_error}",
+                    path.display()
+                )
+            })?
+        }
+    };
+
+    fs::write(path, component).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+/// Encodes a core WASM module into a component with the WASI preview1 adapter.
+///
+/// # Arguments
+///
+/// * `module` - Raw core WASM module bytes
+/// * `path` - Source path used for diagnostics
+///
+/// # Returns
+///
+/// Returns the encoded component bytes when successful.
+fn encode_component_module(module: &[u8], path: &Path) -> Result<Vec<u8>, String> {
+    ComponentEncoder::default()
+        .module(module)
         .map_err(|e| format!("componentize module {}: {e}", path.display()))?
         .adapter(
             "wasi_snapshot_preview1",
@@ -69,9 +113,90 @@ pub(crate) fn ensure_component_module(path: &Path) -> Result<(), String> {
         .map_err(|e| format!("set preview1 adapter {}: {e}", path.display()))?
         .validate(true)
         .encode()
-        .map_err(|e| format!("encode component {}: {e}", path.display()))?;
+        .map_err(|e| format!("encode component {}: {e}", path.display()))
+}
 
-    fs::write(path, component).map_err(|e| format!("write {}: {e}", path.display()))
+/// Embeds default OpenVCS world metadata into a core WASM module.
+///
+/// This is used as a compatibility fallback when wit-component cannot decode
+/// already embedded world metadata from a module produced by a plugin build.
+///
+/// # Arguments
+///
+/// * `module` - Raw core WASM module bytes
+///
+/// # Returns
+///
+/// Returns a new module buffer with embedded component metadata.
+fn embed_default_world_metadata(module: &[u8]) -> Result<Vec<u8>, String> {
+    let wit_dir = default_world_wit_dir();
+    let mut resolve = wit_parser::Resolve::default();
+    let (package_id, _) = resolve
+        .push_path(&wit_dir)
+        .map_err(|e| format!("parse WIT package {}: {e}", wit_dir.display()))?;
+    let package_ids = [package_id];
+    let world_id = resolve
+        .select_world(&package_ids, Some(DEFAULT_WORLD_NAME))
+        .map_err(|e| {
+            format!(
+                "resolve world '{DEFAULT_WORLD_NAME}' from {}: {e}",
+                wit_dir.display()
+            )
+        })?;
+
+    let mut with_metadata = module.to_vec();
+    wit_component::embed_component_metadata(
+        &mut with_metadata,
+        &resolve,
+        world_id,
+        StringEncoding::UTF8,
+    )
+    .map_err(|e| format!("embed world metadata {}: {e}", wit_dir.display()))?;
+    Ok(with_metadata)
+}
+
+/// Strips `component-type*` custom sections from a core WASM module.
+///
+/// Some modules can contain incompatible or stale embedded component metadata
+/// custom sections. Removing these sections allows the SDK to embed fresh
+/// metadata for the canonical OpenVCS world.
+///
+/// # Arguments
+///
+/// * `module` - Raw core WASM module bytes
+///
+/// # Returns
+///
+/// Returns a rebuilt module with all `component-type*` custom sections removed.
+fn strip_component_type_custom_sections(module: &[u8]) -> Result<Vec<u8>, String> {
+    let mut rebuilt = wasm_encoder::Module::new();
+
+    for payload in Parser::new(0).parse_all(module) {
+        let payload = payload.map_err(|e| format!("parse wasm for metadata stripping: {e}"))?;
+
+        if let Payload::CustomSection(section) = &payload {
+            if section.name().starts_with("component-type") {
+                continue;
+            }
+        }
+
+        if let Some((id, range)) = payload.as_section() {
+            rebuilt.section(&wasm_encoder::RawSection {
+                id,
+                data: &module[range],
+            });
+        }
+    }
+
+    Ok(rebuilt.finish())
+}
+
+/// Returns the absolute path to the default OpenVCS WIT directory.
+///
+/// The SDK crate is expected to live at `/SDK` in the monorepo with
+/// world definitions located in `/Core/wit`.
+fn default_world_wit_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(DEFAULT_WORLD_WIT_DIR)
 }
 
 /// Validates that a file is a valid WASM module by checking its magic number.
@@ -91,9 +216,6 @@ pub(crate) fn ensure_wasm_magic(path: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-#[cfg(test)]
-use std::path::PathBuf;
-
 /// Returns the expected exec filename for a given input (no-op transformation).
 ///
 /// Used in tests to simulate expected output paths.
