@@ -12,7 +12,6 @@ It is a build/distribution utility crate, not a runtime plugin host.
 
 ## Code Map
 
-- `src/main.rs`: `openvcs-plugin` CLI entry.
 - `src/bin/cargo-openvcs.rs`: Cargo subcommand entry (`cargo openvcs ...`).
 - `src/lib.rs`: library exports.
 - `src/dist/mod.rs`: bundle assembly entrypoint plus dist-oriented modules (`args`, `manifest`, `fsops`, `bundle`).
@@ -20,9 +19,8 @@ It is a build/distribution utility crate, not a runtime plugin host.
 
 ## Public Interfaces
 
-User-facing binaries:
-- `openvcs-plugin`
-- `cargo-openvcs`
+User-facing binary:
+- `cargo-openvcs` (installed via `cargo install openvcs-sdk`, invoked as `cargo openvcs ...`)
 
 Primary concern:
 - convert a plugin directory into a distributable `.ovcsp` artifact.

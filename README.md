@@ -5,18 +5,26 @@
 
 Tooling for building and packaging OpenVCS plugins.
 
-## `openvcs-plugin`
-- Bundle a plugin into a single `.ovcsp` tar.xz: `cargo run -- --plugin-dir /path/to/plugin --out /path/to/dist`
-- Plugins must be Rust libraries with `src/lib.rs` using the `#[openvcs_plugin]` macro and `export_plugin!` macro to define the plugin ABI.
-- Plugin manifests must use `module.exec` (WASM) and/or `themes/`.
+## Install
+
+Install from crates.io:
+
+```bash
+cargo install openvcs-sdk
+```
 
 ## `cargo openvcs dist`
 
-The SDK also ships a Cargo subcommand wrapper:
+Bundle a plugin into a single `.ovcsp` tar.xz:
 
 ```bash
 cargo openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 ```
+
+Plugins must be Rust libraries with `src/lib.rs` using the `#[openvcs_plugin]` macro and
+`export_plugin!` macro to define the plugin ABI.
+
+Plugin manifests must use `module.exec` (WASM) and/or `themes/`.
 
 ## Development
 - Required: `cargo fmt --all`

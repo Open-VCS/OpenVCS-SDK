@@ -73,5 +73,5 @@ fn parse_args_defaults_plugin_dir_to_current_dir() {
 #[test]
 fn parse_args_help_prints_usage_via_error() {
     let err = parse_args(vec![OsString::from("--help")]).unwrap_err();
-    assert!(err.contains("openvcs-plugin [args]"), "{err}");
+    assert!(err.contains("cargo openvcs dist [args]"), "{err}");
 }

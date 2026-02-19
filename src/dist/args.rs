@@ -11,7 +11,7 @@ use std::path::PathBuf;
 /// This text is displayed when the user passes `--help` or provides
 /// invalid arguments.
 pub(crate) fn usage() -> &'static str {
-    "openvcs-plugin [args]\n\
+    "cargo openvcs dist [args]\n\
 \n\
   --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n\
   --out <path>          Output directory (default: ./dist)\n\

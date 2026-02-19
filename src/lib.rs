@@ -4,8 +4,7 @@
 //! OpenVCS Plugin SDK.
 //!
 //! This crate provides the core functionality for building and bundling
-//! OpenVCS plugins. It is used by the `openvcs-plugin` CLI and
-//! `cargo openvcs` subcommand.
+//! OpenVCS plugins. It is used by the `cargo openvcs` subcommand.
 //!
 //! # Modules
 //!
@@ -21,12 +20,11 @@
 //! let output = bundle_plugin(&args).unwrap();
 //! ```
 //!
-//! # Binaries
+//! # Binary
 //!
-//! When using this crate as a dependency, the following binaries are available:
+//! When installed via `cargo install openvcs-sdk`, this crate provides:
 //!
-//! - `openvcs-plugin` - Standalone plugin bundler
-//! - `cargo-openvcs` - Cargo subcommand for bundling
+//! - `cargo-openvcs` - Cargo subcommand for bundling plugins with `cargo openvcs ...`
 
 pub(crate) mod build;
 pub mod dist;

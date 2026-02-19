@@ -1,8 +1,7 @@
 # Repository Guidelines
 
 ## Project structure & module responsibilities
-- `src/main.rs` builds the `openvcs-plugin` CLI used to bundle plugins as `.ovcsp` archives.
-- `src/bin/cargo-openvcs.rs` produces the `cargo-openvcs` subcommand that wraps the same bundling workflow.
+- `src/bin/cargo-openvcs.rs` produces the `cargo-openvcs` subcommand used as `cargo openvcs ...`.
 - Packaging logic is split across `src/dist/` (CLI args, manifest parsing, bundle assembly) and `src/build/` (WASM build pipeline); `src/lib.rs` exports helpers consumed by the CLI and tests.
 - Build outputs go under `dist/` (generated archives) and `target/` (Cargo artifacts).
 
@@ -16,7 +15,8 @@
 - `cargo fmt --all`; keep formatting clean.
 - `cargo clippy --all-targets -- -D warnings`; CI enforces linting.
 - `just fix` runs `cargo fmt` + `cargo clippy --fix` for quick cleanup.
-- `cargo run -- --plugin-dir /path/to/plugin` to produce a `.ovcsp` bundle for manual verification.
+- `cargo openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce a `.ovcsp` bundle for manual verification.
+- Install path for users is crates.io: `cargo install openvcs-sdk`.
 
 ## Coding style & conventions
 - Follow default Rust formatting (`rustfmt`/`cargo fmt`). Use 4-space indentation in Rust sources, `snake_case` for functions/modules, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.

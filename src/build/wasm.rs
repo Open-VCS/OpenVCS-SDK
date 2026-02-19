@@ -174,10 +174,10 @@ fn strip_component_type_custom_sections(module: &[u8]) -> Result<Vec<u8>, String
     for payload in Parser::new(0).parse_all(module) {
         let payload = payload.map_err(|e| format!("parse wasm for metadata stripping: {e}"))?;
 
-        if let Payload::CustomSection(section) = &payload {
-            if section.name().starts_with("component-type") {
-                continue;
-            }
+        if let Payload::CustomSection(section) = &payload
+            && section.name().starts_with("component-type")
+        {
+            continue;
         }
 
         if let Some((id, range)) = payload.as_section() {
