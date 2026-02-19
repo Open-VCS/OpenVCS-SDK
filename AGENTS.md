@@ -24,6 +24,7 @@
 
 ## Documentation & licensing
 
+- When you change behavior, workflows, CLI flags, bundle layout, or manifest expectations, ALWAYS update the relevant documentation in the same change, even if the user does not explicitly ask.
 - All new Rust source files must include a license header:
   ```rust
   // Copyright © 2025-2026 OpenVCS Contributors
