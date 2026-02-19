@@ -37,7 +37,7 @@ Primary concern:
 
 - SDK should remain focused on packaging workflows.
 - Output artifacts must match structure expected by host bundle installer.
-- Manifest `entry` fields are rejected; plugins must be libraries with `src/lib.rs` that export plugin ABI via `#[openvcs_plugin]` and `export_plugin!`.
+- Plugins are packaged as `.ovcsp` bundles containing `openvcs.plugin.json`, optional `themes/`, and optional component `.wasm` under `bin/`.
 
 ## Cross-Cutting Concerns
 

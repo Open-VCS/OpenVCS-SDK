@@ -1,20 +1,13 @@
 # Codex Execution Plans (ExecPlans):
 
-## Active ExecPlan: No-Entry Plugin Bundling (2026-02-12)
+## Note on Historical Plans
 
-This work updates SDK packaging to reject manifest `entry` fields and accept only WASM components and/or `themes/`.
+This file contains historical ExecPlan notes plus a generic ExecPlan-writing guide.
 
-### Progress
+Current SDK behavior (source of truth: `SDK/src/dist/` and `SDK/src/build/`):
 
-- [x] (2026-02-12) Removed `entry` parsing/copying from bundling path in `SDK/src/dist.rs`.
-- [x] (2026-02-12) Added manifest validation error for unsupported `entry`.
-- [ ] (2026-02-12) Finish updating SDK unit tests and run `cargo test`.
-
-### Decision Log
-
-- Decision: Hard-fail on `entry` rather than silently ignore it.
-  Rationale: Prevents accidental insecure plugin packaging and keeps behavior explicit.
-  Date/Author: 2026-02-12 / Codex
+- Bundles are built from `openvcs.plugin.json` plus optional `themes/` and optional `module.exec`.
+- Unknown manifest fields are ignored by the packager unless explicitly validated.
 
 This document describes the requirements for an execution plan ("ExecPlan"), a design document that a coding agent can follow to deliver a working feature or system change. Treat the reader as a complete beginner to this repository: they have only the current working tree and the single ExecPlan file you provide. There is no memory of prior plans and no external context.
 
@@ -155,7 +148,7 @@ Prefer additive code changes followed by subtractions that keep tests passing. P
 
     Be prescriptive. Name the libraries, modules, and services to use and why. Specify the types, traits/interfaces, and function signatures that must exist at the end of the milestone. Prefer stable names and paths such as `crate::module::function` or `package.submodule.Interface`. E.g.:
 
-    In crates/foo/planner.rs, define:
+    In src/foo/planner.rs, define:
 
         pub trait Planner {
             fn plan(&self, observed: &Observed) -> Vec<Action>;
