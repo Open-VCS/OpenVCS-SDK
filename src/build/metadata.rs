@@ -7,6 +7,7 @@
 //! to extract package information and target directories.
 
 use serde::Deserialize;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -26,9 +27,45 @@ pub(crate) struct CargoMetadataPackage {
     /// Name of the package.
     pub(crate) name: String,
     /// Path to the package manifest.
-    #[cfg(test)]
     #[serde(default)]
-    pub(crate) manifest_path: String,
+    pub(crate) manifest_path: PathBuf,
+}
+
+/// Returns whether two manifest paths point to the same file.
+fn manifest_paths_match(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+
+    let a_canon = fs::canonicalize(a).ok();
+    let b_canon = fs::canonicalize(b).ok();
+
+    match (a_canon, b_canon) {
+        (Some(a_canon), Some(b_canon)) => a_canon == b_canon,
+        _ => {
+            let a_norm = a.to_string_lossy().replace('\\', "/");
+            let b_norm = b.to_string_lossy().replace('\\', "/");
+            a_norm == b_norm
+        }
+    }
+}
+
+/// Finds the package name for a specific `Cargo.toml` path.
+pub(crate) fn package_name_for_manifest_path(
+    metadata: &CargoMetadata,
+    manifest_path: &Path,
+) -> Option<String> {
+    metadata
+        .packages
+        .iter()
+        .find(|package| manifest_paths_match(&package.manifest_path, manifest_path))
+        .map(|package| package.name.clone())
+        .or_else(|| {
+            metadata
+                .packages
+                .first()
+                .map(|package| package.name.clone())
+        })
 }
 
 /// Runs `cargo metadata` for a plugin and parses the output.
@@ -80,15 +117,9 @@ pub(crate) fn resolve_target_dir(plugin_dir: &Path) -> PathBuf {
 #[cfg(test)]
 /// Finds the package name for a specific manifest path.
 ///
-/// Used in tests to match packages by their Cargo.toml location.
+/// Used by tests to validate workspace package matching behavior.
 pub(crate) fn package_name_for_manifest(plugin_dir: &Path) -> Option<String> {
     let manifest_path = plugin_dir.join("Cargo.toml");
-    let manifest = manifest_path.to_string_lossy().replace('\\', "/");
     let metadata = cargo_metadata(plugin_dir)?;
-    metadata
-        .packages
-        .iter()
-        .find(|p| p.manifest_path.replace('\\', "/") == manifest)
-        .map(|p| p.name.clone())
-        .or_else(|| metadata.packages.first().map(|p| p.name.clone()))
+    package_name_for_manifest_path(&metadata, &manifest_path)
 }

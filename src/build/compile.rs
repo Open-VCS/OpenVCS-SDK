@@ -5,7 +5,7 @@
 //!
 //! Provides functions for building WASM plugins targeting the wasip1 ABI.
 
-use crate::build::metadata::cargo_metadata;
+use crate::build::metadata::{cargo_metadata, package_name_for_manifest_path};
 use crate::build::wasm::ensure_component_module;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -145,13 +145,10 @@ fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Resul
 ///
 /// Returns `Ok(String)` with the package name, or `Err(String)` on failure.
 fn get_crate_name(plugin_dir: &Path) -> Result<String, String> {
+    let manifest_path = plugin_dir.join("Cargo.toml");
     let metadata =
         cargo_metadata(plugin_dir).ok_or_else(|| "failed to get cargo metadata".to_string())?;
 
-    metadata
-        .packages
-        .into_iter()
-        .next()
-        .map(|p| p.name)
+    package_name_for_manifest_path(&metadata, &manifest_path)
         .ok_or_else(|| "no packages found in cargo metadata".to_string())
 }

@@ -1,8 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::build::metadata::package_name_for_manifest;
 use crate::build::metadata::resolve_target_dir;
+use crate::build::metadata::{
+    package_name_for_manifest, package_name_for_manifest_path, CargoMetadata, CargoMetadataPackage,
+};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -63,4 +65,27 @@ fn resolve_target_dir_falls_back_to_local_target() {
     let tmp = TempDir::new("resolve_target_no_cargo");
     let result = resolve_target_dir(&tmp.path);
     assert_eq!(result, tmp.path.join("target"));
+}
+
+#[test]
+fn package_name_for_manifest_path_selects_matching_workspace_member() {
+    let metadata = CargoMetadata {
+        target_directory: PathBuf::from("/tmp/target"),
+        packages: vec![
+            CargoMetadataPackage {
+                name: "openvcs-example-status".to_string(),
+                manifest_path: PathBuf::from("/repo/ExamplePlugins/example.status/Cargo.toml"),
+            },
+            CargoMetadataPackage {
+                name: "openvcs-example-settings".to_string(),
+                manifest_path: PathBuf::from("/repo/ExamplePlugins/example.settings/Cargo.toml"),
+            },
+        ],
+    };
+
+    let selected = package_name_for_manifest_path(
+        &metadata,
+        PathBuf::from("/repo/ExamplePlugins/example.settings/Cargo.toml").as_path(),
+    );
+    assert_eq!(selected, Some("openvcs-example-settings".to_string()));
 }
