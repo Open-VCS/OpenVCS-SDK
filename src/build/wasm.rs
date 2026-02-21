@@ -9,11 +9,13 @@
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::borrow::Cow;
 use wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADAPTER;
 use wasmparser::{Encoding, Parser, Payload};
 use wit_component::{ComponentEncoder, StringEncoding};
 
-const DEFAULT_WORLD_NAME: &str = "plugin";
+const DEFAULT_WORLD_NAMES: [&str; 3] = ["plugin-v1-1", "plugin", "vcs"];
 const DEFAULT_WORLD_WIT_DIR: &str = "../Core/wit";
 
 /// Checks if a WASM binary is a component module.
@@ -65,27 +67,36 @@ pub(crate) fn ensure_component_module(path: &Path) -> Result<(), String> {
     let component = match encode_component_module(&module, path) {
         Ok(component) => component,
         Err(original_error) => {
-            let sanitized = strip_component_type_custom_sections(&module)
+            let sanitized_encoded_world =
+                strip_component_type_encoded_world_custom_sections(&module)
+                    .map_err(|sanitize_error| {
+                        format!(
+                            "encode component {}: {original_error}; failed to sanitize embedded encoded-world metadata sections: {sanitize_error}",
+                            path.display()
+                        )
+                    })?;
+
+            match encode_component_module_with_fallback_worlds(&sanitized_encoded_world, path) {
+                Ok(component) => component,
+                Err(first_retry_error) => {
+                    let sanitized_all = strip_all_component_type_custom_sections(&module)
                 .map_err(|sanitize_error| {
                     format!(
                         "encode component {}: {original_error}; failed to sanitize embedded component metadata sections: {sanitize_error}",
                         path.display()
                     )
-                })?;
+                    })?;
 
-            let with_metadata = embed_default_world_metadata(&sanitized).map_err(|embed_error| {
-                format!(
-                    "encode component {}: {original_error}; fallback metadata embedding failed: {embed_error}",
-                    path.display()
-                )
-            })?;
-
-            encode_component_module(&with_metadata, path).map_err(|retry_error| {
-                format!(
-                    "encode component {} after metadata embedding failed: {retry_error}; original error: {original_error}",
-                    path.display()
-                )
-            })?
+                    encode_component_module_with_fallback_worlds(&sanitized_all, path).map_err(
+                        |retry_error| {
+                        format!(
+                            "encode component {} after metadata embedding failed: {retry_error}; first retry error: {first_retry_error}; original error: {original_error}",
+                            path.display()
+                        )
+                    },
+                    )?
+                }
+            }
         }
     };
 
@@ -116,7 +127,7 @@ fn encode_component_module(module: &[u8], path: &Path) -> Result<Vec<u8>, String
         .map_err(|e| format!("encode component {}: {e}", path.display()))
 }
 
-/// Embeds default OpenVCS world metadata into a core WASM module.
+/// Tries encoding with fallback OpenVCS worlds after embedding metadata.
 ///
 /// This is used as a compatibility fallback when wit-component cannot decode
 /// already embedded world metadata from a module produced by a plugin build.
@@ -124,42 +135,63 @@ fn encode_component_module(module: &[u8], path: &Path) -> Result<Vec<u8>, String
 /// # Arguments
 ///
 /// * `module` - Raw core WASM module bytes
+/// * `path` - Source path used for diagnostics
 ///
 /// # Returns
 ///
-/// Returns a new module buffer with embedded component metadata.
-fn embed_default_world_metadata(module: &[u8]) -> Result<Vec<u8>, String> {
+/// Returns encoded component bytes on success.
+fn encode_component_module_with_fallback_worlds(module: &[u8], path: &Path) -> Result<Vec<u8>, String> {
     let wit_dir = default_world_wit_dir();
     let mut resolve = wit_parser::Resolve::default();
     let (package_id, _) = resolve
         .push_path(&wit_dir)
         .map_err(|e| format!("parse WIT package {}: {e}", wit_dir.display()))?;
     let package_ids = [package_id];
-    let world_id = resolve
-        .select_world(&package_ids, Some(DEFAULT_WORLD_NAME))
-        .map_err(|e| {
-            format!(
-                "resolve world '{DEFAULT_WORLD_NAME}' from {}: {e}",
-                wit_dir.display()
-            )
-        })?;
+    let mut world_errors = Vec::new();
 
-    let mut with_metadata = module.to_vec();
-    wit_component::embed_component_metadata(
-        &mut with_metadata,
-        &resolve,
-        world_id,
-        StringEncoding::UTF8,
-    )
-    .map_err(|e| format!("embed world metadata {}: {e}", wit_dir.display()))?;
-    Ok(with_metadata)
+    for world_name in DEFAULT_WORLD_NAMES {
+        let world_id = match resolve.select_world(&package_ids, Some(world_name)) {
+            Ok(world_id) => world_id,
+            Err(error) => {
+                world_errors.push(format!("select world '{world_name}': {error}"));
+                continue;
+            }
+        };
+
+        let mut with_metadata = module.to_vec();
+        if let Err(error) = wit_component::embed_component_metadata(
+            &mut with_metadata,
+            &resolve,
+            world_id,
+            StringEncoding::UTF8,
+        ) {
+            world_errors.push(format!(
+                "embed world '{world_name}' metadata from {}: {error}",
+                wit_dir.display()
+            ));
+            continue;
+        }
+
+        match encode_component_module(&with_metadata, path) {
+            Ok(component) => return Ok(component),
+            Err(error) => {
+                world_errors.push(format!("encode with world '{world_name}': {error}"));
+            }
+        }
+    }
+
+    Err(format!(
+        "fallback world attempts from {} failed: [{}]",
+        wit_dir.display(),
+        world_errors.join("; ")
+    ))
 }
 
-/// Strips `component-type*` custom sections from a core WASM module.
+/// Strips `component-type:*:encoded world` sections from a core WASM module.
 ///
 /// Some modules can contain incompatible or stale embedded component metadata
-/// custom sections. Removing these sections allows the SDK to embed fresh
-/// metadata for the canonical OpenVCS world.
+/// custom sections. This preserves any existing `imports and exports` metadata,
+/// which `wit-component` uses to re-encode a component world.
 ///
 /// # Arguments
 ///
@@ -167,8 +199,36 @@ fn embed_default_world_metadata(module: &[u8]) -> Result<Vec<u8>, String> {
 ///
 /// # Returns
 ///
-/// Returns a rebuilt module with all `component-type*` custom sections removed.
-fn strip_component_type_custom_sections(module: &[u8]) -> Result<Vec<u8>, String> {
+/// Returns a rebuilt module with stale encoded-world metadata removed.
+fn strip_component_type_encoded_world_custom_sections(module: &[u8]) -> Result<Vec<u8>, String> {
+    let mut rebuilt = wasm_encoder::Module::new();
+
+    for payload in Parser::new(0).parse_all(module) {
+        let payload = payload.map_err(|e| format!("parse wasm for metadata stripping: {e}"))?;
+
+        if let Payload::CustomSection(section) = &payload
+            && section.name().starts_with("component-type")
+            && section.name().ends_with(":encoded world")
+        {
+            continue;
+        }
+
+        if let Some((id, range)) = payload.as_section() {
+            rebuilt.section(&wasm_encoder::RawSection {
+                id,
+                data: &module[range],
+            });
+        }
+    }
+
+    Ok(rebuilt.finish())
+}
+
+/// Strips all `component-type*` custom sections from a core WASM module.
+///
+/// This is a compatibility fallback used only if encoded-world-only stripping
+/// still fails to componentize the module.
+fn strip_all_component_type_custom_sections(module: &[u8]) -> Result<Vec<u8>, String> {
     let mut rebuilt = wasm_encoder::Module::new();
 
     for payload in Parser::new(0).parse_all(module) {
@@ -238,4 +298,48 @@ pub(crate) fn built_wasm_bin_path(target_dir: &Path, target: &str, bin: &str) ->
     p.push("release");
     p.push(format!("{bin}.wasm"));
     p
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Collects custom section names from a core wasm module.
+    fn custom_section_names(module: &[u8]) -> Result<Vec<String>, String> {
+        let mut names = Vec::new();
+        for payload in Parser::new(0).parse_all(module) {
+            let payload = payload.map_err(|e| format!("parse module for custom names: {e}"))?;
+            if let Payload::CustomSection(section) = payload {
+                names.push(section.name().to_string());
+            }
+        }
+        Ok(names)
+    }
+
+    /// Ensures fallback sanitization preserves imports/exports metadata while removing encoded worlds.
+    #[test]
+    fn strips_only_component_type_encoded_world_sections() {
+        let mut module = wasm_encoder::Module::new();
+        module.section(&wasm_encoder::CustomSection {
+            name: Cow::Borrowed("component-type:test:imports and exports"),
+            data: Cow::Borrowed(&[]),
+        });
+        module.section(&wasm_encoder::CustomSection {
+            name: Cow::Borrowed("component-type:test:encoded world"),
+            data: Cow::Borrowed(&[]),
+        });
+        module.section(&wasm_encoder::CustomSection {
+            name: Cow::Borrowed("name"),
+            data: Cow::Borrowed(&[]),
+        });
+
+        let original = module.finish();
+        let sanitized = strip_component_type_encoded_world_custom_sections(&original)
+            .expect("sanitization should succeed");
+        let names = custom_section_names(&sanitized).expect("module parse should succeed");
+
+        assert!(names.iter().any(|name| name == "component-type:test:imports and exports"));
+        assert!(names.iter().any(|name| name == "name"));
+        assert!(!names.iter().any(|name| name == "component-type:test:encoded world"));
+    }
 }

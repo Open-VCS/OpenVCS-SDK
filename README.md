@@ -26,6 +26,10 @@ Plugins must be Rust libraries with `src/lib.rs` using the `#[openvcs_plugin]` m
 
 Plugin manifests must use `module.exec` (WASM) and/or `themes/`.
 
+The SDK also supports rebuilding component metadata for modules with stale
+`component-type:*:encoded world` sections by preserving wit-bindgen
+`imports and exports` metadata and retrying encoding against OpenVCS worlds.
+
 ## Development
 - Required: `cargo fmt --all`
 - CI enforces: `cargo fmt --all -- --check`
