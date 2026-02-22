@@ -15,7 +15,7 @@ use wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADA
 use wasmparser::{Encoding, Parser, Payload};
 use wit_component::{ComponentEncoder, StringEncoding};
 
-const DEFAULT_WORLD_NAMES: [&str; 3] = ["plugin-v1-1", "plugin", "vcs"];
+const DEFAULT_WORLD_NAMES: [&str; 2] = ["plugin", "vcs"];
 const DEFAULT_WORLD_WIT_DIR: &str = "../Core/wit";
 
 /// Checks if a WASM binary is a component module.
