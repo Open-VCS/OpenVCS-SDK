@@ -44,6 +44,7 @@ fn rustc_target_list() -> Option<Vec<String>> {
 /// * `plugin_dir` - Path to the plugin root (must contain `src/lib.rs`)
 /// * `target_dir` - Cargo target directory
 /// * `_bin` - Binary name (unused, retained for API compatibility)
+/// * `verbose` - Enable verbose output
 ///
 /// # Returns
 ///
@@ -60,6 +61,7 @@ pub(crate) fn build_plugin_wasi(
     plugin_dir: &Path,
     target_dir: &Path,
     _bin: &str,
+    verbose: bool,
 ) -> Result<PathBuf, String> {
     let available = rustc_target_list().unwrap_or_default();
     let supports_wasip1 = available.is_empty() || available.iter().any(|t| t == "wasm32-wasip1");
@@ -82,8 +84,14 @@ pub(crate) fn build_plugin_wasi(
     }
 
     for target in targets {
-        let result = build_plugin_lib(plugin_dir, target_dir, target);
+        if verbose {
+            eprintln!("Building for target: {}", target);
+        }
+        let result = build_plugin_lib(plugin_dir, target_dir, target, verbose);
         if let Ok(wasm_path) = result {
+            if verbose {
+                eprintln!("Validating WASM component...");
+            }
             ensure_component_module(&wasm_path)?;
             return Ok(wasm_path);
         }
@@ -99,15 +107,25 @@ pub(crate) fn build_plugin_wasi(
 /// * `plugin_dir` - Path to the plugin root
 /// * `target_dir` - Cargo target directory
 /// * `target` - Target triple (e.g., `wasm32-wasip1`)
+/// * `verbose` - Enable verbose output
 ///
 /// # Returns
 ///
 /// Returns `Ok(PathBuf)` to the built WASM file, or `Err(String)` on failure.
-fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Result<PathBuf, String> {
+fn build_plugin_lib(
+    plugin_dir: &Path,
+    target_dir: &Path,
+    target: &str,
+    verbose: bool,
+) -> Result<PathBuf, String> {
     let pkg_name = get_crate_name(plugin_dir)?;
     let wasm_name = format!("{}.wasm", pkg_name.replace('-', "_"));
     let release_dir = target_dir.join(target).join("release");
     let wasm_path = release_dir.join(&wasm_name);
+
+    if verbose {
+        eprintln!("Running cargo build --lib --release --target {}", target);
+    }
 
     let mut cmd = Command::new("cargo");
     cmd.current_dir(plugin_dir);
@@ -130,6 +148,10 @@ fn build_plugin_lib(plugin_dir: &Path, target_dir: &Path, target: &str) -> Resul
 
     if !wasm_path.exists() {
         return Err(format!("expected wasm at {}", wasm_path.display()));
+    }
+
+    if verbose {
+        eprintln!("WASM built successfully: {}", wasm_path.display());
     }
 
     Ok(wasm_path)

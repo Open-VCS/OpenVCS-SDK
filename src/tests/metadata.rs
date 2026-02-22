@@ -3,7 +3,7 @@
 
 use crate::build::metadata::resolve_target_dir;
 use crate::build::metadata::{
-    package_name_for_manifest, package_name_for_manifest_path, CargoMetadata, CargoMetadataPackage,
+    CargoMetadata, CargoMetadataPackage, package_name_for_manifest, package_name_for_manifest_path,
 };
 use std::fs;
 use std::path::PathBuf;

@@ -34,7 +34,7 @@ use std::process::ExitCode;
 /// Prints usage information to stderr.
 fn print_usage() {
     eprintln!(
-        "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--fix]
+        "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--fix] [-V] [--verbose]
 
 Defaults:
 - If run inside a plugin folder (contains openvcs.plugin.json), bundles that plugin.
@@ -44,6 +44,10 @@ Default output directory: ./dist
 Options:
 - --all: bundle all plugins in the target directory
 - --fix: run `cargo fix` in Rust plugin directories before bundling
+- -V, --verbose: enable verbose output
+
+Global Options:
+- -v, --version: show version information
 "
     );
 }
@@ -157,6 +161,7 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     let mut out_dir = cwd.join("dist");
     let mut all = false;
     let mut fix = false;
+    let mut verbose = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         let s = arg.to_string_lossy();
@@ -178,6 +183,9 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
             }
             "--fix" => {
                 fix = true;
+            }
+            "-V" | "--verbose" => {
+                verbose = true;
             }
             "--help" => {
                 print_usage();
@@ -225,6 +233,7 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
         let parsed = PluginBuildArgs {
             plugin_dir: dir,
             out_dir: out_dir.clone(),
+            verbose,
         };
         let path = bundle_plugin(&parsed)?;
         out_paths.push(path);
@@ -244,6 +253,16 @@ fn main() -> ExitCode {
     if matches!(args.first().and_then(|a| a.to_str()), Some("openvcs")) {
         args.remove(0);
     }
+
+    // Handle global -v/--version flag before subcommand routing
+    if args.iter().any(|a| {
+        let s = a.to_string_lossy();
+        s == "-v" || s == "--version"
+    }) {
+        println!("cargo-openvcs {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+
     match args.first().and_then(|a| a.to_str()) {
         Some("dist") => {
             args.remove(0);

@@ -43,6 +43,7 @@ pub use bundle::bundle_plugin;
 ///
 /// * `plugin_dir` - Path to the plugin root directory (must contain `openvcs.plugin.json`)
 /// * `out_dir` - Directory where the `.ovcsp` bundle will be written (default: `./dist`)
+/// * `verbose` - Enable verbose output
 #[derive(Debug)]
 pub struct PluginBuildArgs {
     /// Path to the plugin repository root.
@@ -57,6 +58,12 @@ pub struct PluginBuildArgs {
     ///
     /// Defaults to `./dist` if not specified.
     pub out_dir: PathBuf,
+
+    /// Enable verbose output.
+    ///
+    /// When enabled, prints additional information about build steps,
+    /// file operations, and progress.
+    pub verbose: bool,
 }
 
 // Reduce clippy type complexity warnings for manifest parsing results.

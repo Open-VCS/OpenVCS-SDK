@@ -6,11 +6,11 @@
 //! Provides utilities for validating WASM binaries and encoding them
 //! as WebAssembly components with WASI adapters.
 
+#[cfg(test)]
+use std::borrow::Cow;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-#[cfg(test)]
-use std::borrow::Cow;
 use wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADAPTER;
 use wasmparser::{Encoding, Parser, Payload};
 use wit_component::{ComponentEncoder, StringEncoding};
@@ -140,7 +140,10 @@ fn encode_component_module(module: &[u8], path: &Path) -> Result<Vec<u8>, String
 /// # Returns
 ///
 /// Returns encoded component bytes on success.
-fn encode_component_module_with_fallback_worlds(module: &[u8], path: &Path) -> Result<Vec<u8>, String> {
+fn encode_component_module_with_fallback_worlds(
+    module: &[u8],
+    path: &Path,
+) -> Result<Vec<u8>, String> {
     let wit_dir = default_world_wit_dir();
     let mut resolve = wit_parser::Resolve::default();
     let (package_id, _) = resolve
@@ -338,8 +341,16 @@ mod tests {
             .expect("sanitization should succeed");
         let names = custom_section_names(&sanitized).expect("module parse should succeed");
 
-        assert!(names.iter().any(|name| name == "component-type:test:imports and exports"));
+        assert!(
+            names
+                .iter()
+                .any(|name| name == "component-type:test:imports and exports")
+        );
         assert!(names.iter().any(|name| name == "name"));
-        assert!(!names.iter().any(|name| name == "component-type:test:encoded world"));
+        assert!(
+            !names
+                .iter()
+                .any(|name| name == "component-type:test:encoded world")
+        );
     }
 }

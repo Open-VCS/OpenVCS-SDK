@@ -50,8 +50,18 @@ use std::path::PathBuf;
 ///     {exec}              # if module.exec was specified
 /// ```
 pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
+    let verbose = args.verbose;
+
+    if verbose {
+        eprintln!("Bundling plugin from: {}", args.plugin_dir.display());
+    }
+
     let (manifest_id, module_exec) = manifest_defaults(&args.plugin_dir)?;
     let plugin_id = manifest_id;
+
+    if verbose {
+        eprintln!("Plugin ID: {}", plugin_id);
+    }
 
     let has_wasm = module_exec.is_some();
     let has_ui_or_assets = args.plugin_dir.join("themes").is_dir();
@@ -61,6 +71,9 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
 
     let manifest_src = args.plugin_dir.join("openvcs.plugin.json");
 
+    if verbose {
+        eprintln!("Creating output directory: {}", args.out_dir.display());
+    }
     fs::create_dir_all(&args.out_dir)
         .map_err(|e| format!("failed to create {}: {e}", args.out_dir.display()))?;
 
@@ -68,9 +81,16 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
     let bundle_dir = staging_root.join(&plugin_id);
     let bin_dir = bundle_dir.join("bin");
 
+    if verbose {
+        eprintln!("Creating staging directory: {}", staging_root.display());
+    }
+
     fs::create_dir_all(&bin_dir)
         .map_err(|e| format!("failed to create {}: {e}", bin_dir.display()))?;
 
+    if verbose {
+        eprintln!("Copying manifest: {}", manifest_src.display());
+    }
     fs::copy(&manifest_src, bundle_dir.join("openvcs.plugin.json")).map_err(|e| {
         format!(
             "failed to copy manifest {} -> {}: {e}",
@@ -83,6 +103,9 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
 
     let themes_src = args.plugin_dir.join("themes");
     if themes_src.is_dir() {
+        if verbose {
+            eprintln!("Copying themes directory");
+        }
         copy_dir_recursive(&themes_src, &bundle_dir.join("themes"))?;
     }
 
@@ -103,7 +126,11 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
         let _bin = exec
             .strip_suffix(".wasm")
             .ok_or_else(|| format!("invalid wasm exec: {exec}"))?;
-        let bin_src = build_plugin_wasi(&args.plugin_dir, &target_dir, "libplugin")?;
+
+        if verbose {
+            eprintln!("Building WASM module: {}", exec);
+        }
+        let bin_src = build_plugin_wasi(&args.plugin_dir, &target_dir, "libplugin", verbose)?;
         if !bin_src.is_file() {
             return Err(format!(
                 "built wasm not found at {} (did cargo build succeed?)",
@@ -112,6 +139,10 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
         }
         ensure_wasm_magic(&bin_src)?;
         let bin_dst = bin_dir.join(&exec);
+
+        if verbose {
+            eprintln!("Copying WASM to bundle: {}", bin_dst.display());
+        }
         fs::copy(&bin_src, &bin_dst).map_err(|e| {
             format!(
                 "failed to copy wasm {} -> {}: {e}",
@@ -126,9 +157,17 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
         fs::remove_file(&out_path)
             .map_err(|e| format!("failed to remove existing {}: {e}", out_path.display()))?;
     }
+
+    if verbose {
+        eprintln!("Creating archive: {}", out_path.display());
+    }
     write_tar_xz(&out_path, &staging_root, &plugin_id)?;
 
     let _ = fs::remove_dir_all(&staging_root);
+
+    if verbose {
+        eprintln!("Bundle created successfully: {}", out_path.display());
+    }
 
     Ok(out_path)
 }
