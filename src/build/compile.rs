@@ -80,24 +80,35 @@ pub(crate) fn build_plugin_wasi(
 
     let has_lib = plugin_dir.join("src").join("lib.rs").is_file();
     if !has_lib {
-        return Err("missing src/lib.rs - plugins must be libraries with lib.rs".to_string());
+        return Err(format!(
+            "missing src/lib.rs in {} - plugins must be libraries with lib.rs",
+            plugin_dir.display()
+        ));
     }
 
+    let mut errors = Vec::new();
     for target in targets {
         if verbose {
             eprintln!("Building for target: {}", target);
         }
-        let result = build_plugin_lib(plugin_dir, target_dir, target, verbose);
-        if let Ok(wasm_path) = result {
-            if verbose {
-                eprintln!("Validating WASM component...");
+        match build_plugin_lib(plugin_dir, target_dir, target, verbose) {
+            Ok(wasm_path) => {
+                if verbose {
+                    eprintln!("Validating WASM component...");
+                }
+                ensure_component_module(&wasm_path)?;
+                return Ok(wasm_path);
             }
-            ensure_component_module(&wasm_path)?;
-            return Ok(wasm_path);
+            Err(e) => {
+                errors.push(format!("{}: {}", target, e));
+            }
         }
     }
 
-    Err("failed to build plugin for wasm32-wasip1 or wasm32-wasi".to_string())
+    Err(format!(
+        "failed to build plugin for any wasm target:\n  {}",
+        errors.join("\n  ")
+    ))
 }
 
 /// Builds the plugin library for a specific target.
@@ -124,7 +135,11 @@ fn build_plugin_lib(
     let wasm_path = release_dir.join(&wasm_name);
 
     if verbose {
-        eprintln!("Running cargo build --lib --release --target {}", target);
+        eprintln!(
+            "Running cargo build --lib --release --target {} in {}",
+            target,
+            plugin_dir.display()
+        );
     }
 
     let mut cmd = Command::new("cargo");
@@ -139,15 +154,31 @@ fn build_plugin_lib(
 
     let output = cmd
         .output()
-        .map_err(|e| format!("cargo build failed: {e}"))?;
+        .map_err(|e| format!("cargo build failed to spawn: {e}"))?;
 
     if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("build failed: {}", stderr));
+        let mut err_msg = format!(
+            "cargo build failed with exit code: {:?}",
+            output.status.code()
+        );
+        if !stdout.is_empty() {
+            err_msg.push_str("\n\nstdout:\n");
+            err_msg.push_str(&stdout);
+        }
+        if !stderr.is_empty() {
+            err_msg.push_str("\n\nstderr:\n");
+            err_msg.push_str(&stderr);
+        }
+        return Err(err_msg);
     }
 
     if !wasm_path.exists() {
-        return Err(format!("expected wasm at {}", wasm_path.display()));
+        return Err(format!(
+            "cargo build succeeded but wasm not found at {} (check Cargo.toml [lib] section)",
+            wasm_path.display()
+        ));
     }
 
     if verbose {
