@@ -1,6 +1,11 @@
 node_modules/
 *.tgz
 /dist
+/build
 /target
 /native/target
 /native/dist
+/bin/*.js
+/bin/*.d.ts
+/lib/**/*.js
+/lib/**/*.d.ts

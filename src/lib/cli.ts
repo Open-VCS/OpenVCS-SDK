@@ -1,13 +1,26 @@
-const { bundlePlugin, distUsage, parseDistArgs } = require("./dist");
-const { initUsage, runInitCommand } = require("./init");
+import { bundlePlugin, distUsage, parseDistArgs } from "./dist";
+import { initUsage, runInitCommand } from "./init";
 
-const packageJson = require("../package.json");
+const packageJson: { version: string } = require("../package.json");
 
-function usage() {
-  return `Usage: openvcs <command> [options]\n\nCommands:\n  dist [args]            Package plugin into .ovcsp\n  init [--theme] [dir]   Interactively scaffold a plugin project\n  -v, --version          Show version information\n\nDist args:\n  --plugin-dir <path>    Plugin root containing openvcs.plugin.json\n  --out <path>           Output directory (default: ./dist)\n  --no-npm-deps          Skip npm dependency bundling\n  -V, --verbose          Verbose output\n`;
+interface CodedError {
+  code?: string;
 }
 
-async function runCli(args) {
+function hasCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as CodedError).code === code
+  );
+}
+
+function usage(): string {
+  return "Usage: openvcs <command> [options]\n\nCommands:\n  dist [args]            Package plugin into .ovcsp\n  init [--theme] [dir]   Interactively scaffold a plugin project\n  -v, --version          Show version information\n\nDist args:\n  --plugin-dir <path>    Plugin root containing openvcs.plugin.json\n  --out <path>           Output directory (default: ./dist)\n  --no-npm-deps          Skip npm dependency bundling\n  -V, --verbose          Verbose output\n";
+}
+
+export async function runCli(args: string[]): Promise<void> {
   if (args.length === 0) {
     process.stderr.write(usage());
     process.exitCode = 1;
@@ -35,8 +48,8 @@ async function runCli(args) {
       const outPath = await bundlePlugin(parsed);
       process.stdout.write(`${outPath}\n`);
       return;
-    } catch (error) {
-      if (error.code === "USAGE") {
+    } catch (error: unknown) {
+      if (hasCode(error, "USAGE")) {
         throw new Error(distUsage());
       }
       throw error;
@@ -52,8 +65,8 @@ async function runCli(args) {
       const targetDir = await runInitCommand(rest);
       process.stdout.write(`Initialized plugin at ${targetDir}\n`);
       return;
-    } catch (error) {
-      if (error.code === "USAGE") {
+    } catch (error: unknown) {
+      if (hasCode(error, "USAGE")) {
         throw new Error(initUsage());
       }
       throw error;
@@ -62,7 +75,3 @@ async function runCli(args) {
 
   throw new Error(`unknown command: ${command}`);
 }
-
-module.exports = {
-  runCli,
-};

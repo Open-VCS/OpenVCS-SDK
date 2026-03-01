@@ -1,15 +1,19 @@
-const fs = require("node:fs");
-const path = require("node:path");
+import * as fs from "node:fs";
+import * as path from "node:path";
 
-function isPathInside(rootPath, candidatePath) {
+export function isPathInside(rootPath: string, candidatePath: string): boolean {
   const relative = path.relative(rootPath, candidatePath);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-function rejectSymlinksRecursive(rootDir) {
+export function rejectSymlinksRecursive(rootDir: string): void {
   const stack = [rootDir];
   while (stack.length > 0) {
     const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
     const entries = fs.readdirSync(current, { withFileTypes: true });
     for (const entry of entries) {
       const entryPath = path.join(current, entry.name);
@@ -24,11 +28,11 @@ function rejectSymlinksRecursive(rootDir) {
   }
 }
 
-function ensureDirectory(filePath) {
+export function ensureDirectory(filePath: string): void {
   fs.mkdirSync(filePath, { recursive: true });
 }
 
-function copyFileStrict(sourcePath, destinationPath) {
+export function copyFileStrict(sourcePath: string, destinationPath: string): void {
   const stats = fs.lstatSync(sourcePath);
   if (stats.isSymbolicLink()) {
     throw new Error(`plugin contains a symlink: ${sourcePath}`);
@@ -41,7 +45,7 @@ function copyFileStrict(sourcePath, destinationPath) {
   fs.copyFileSync(sourcePath, destinationPath);
 }
 
-function copyDirectoryRecursiveStrict(sourceDir, destinationDir) {
+export function copyDirectoryRecursiveStrict(sourceDir: string, destinationDir: string): void {
   if (!fs.existsSync(sourceDir)) {
     return;
   }
@@ -72,11 +76,3 @@ function copyDirectoryRecursiveStrict(sourceDir, destinationDir) {
     }
   }
 }
-
-module.exports = {
-  copyDirectoryRecursiveStrict,
-  copyFileStrict,
-  ensureDirectory,
-  isPathInside,
-  rejectSymlinksRecursive,
-};

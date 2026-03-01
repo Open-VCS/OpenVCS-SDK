@@ -1,26 +1,48 @@
-const fs = require("node:fs");
-const path = require("node:path");
-const { spawnSync } = require("node:child_process");
-const tar = require("tar");
-const {
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { spawnSync } from "node:child_process";
+import tar = require("tar");
+import {
   copyDirectoryRecursiveStrict,
   copyFileStrict,
   ensureDirectory,
   isPathInside,
   rejectSymlinksRecursive,
-} = require("./fs-utils");
+} from "./fs-utils";
 
 const ICON_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "avif", "svg"];
 
-function distUsage(commandName = "openvcs") {
-  return `${commandName} dist [args]\n\n  --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n  --out <path>          Output directory (default: ./dist)\n  --no-npm-deps         Disable npm dependency bundling (enabled by default)\n  -V, --verbose         Enable verbose output\n`;
+type UsageError = Error & { code?: string };
+
+interface DistArgs {
+  pluginDir: string;
+  outDir: string;
+  verbose: boolean;
+  noNpmDeps: boolean;
 }
 
-function npmExecutable() {
+interface ManifestInfo {
+  pluginId: string;
+  moduleExec: string | undefined;
+  manifestPath: string;
+}
+
+interface CommandResult {
+  status: number | null;
+  error?: Error;
+  stdout?: string | null;
+  stderr?: string | null;
+}
+
+function npmExecutable(): string {
   return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
-function parseDistArgs(args) {
+export function distUsage(commandName = "openvcs"): string {
+  return `${commandName} dist [args]\n\n  --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n  --out <path>          Output directory (default: ./dist)\n  --no-npm-deps         Disable npm dependency bundling (enabled by default)\n  -V, --verbose         Enable verbose output\n`;
+}
+
+export function parseDistArgs(args: string[]): DistArgs {
   let pluginDir = process.cwd();
   let outDir = "dist";
   let verbose = false;
@@ -33,7 +55,7 @@ function parseDistArgs(args) {
       if (index >= args.length) {
         throw new Error("missing value for --plugin-dir");
       }
-      pluginDir = args[index];
+      pluginDir = args[index] as string;
       continue;
     }
     if (arg === "--out") {
@@ -41,7 +63,7 @@ function parseDistArgs(args) {
       if (index >= args.length) {
         throw new Error("missing value for --out");
       }
-      outDir = args[index];
+      outDir = args[index] as string;
       continue;
     }
     if (arg === "--no-npm-deps") {
@@ -53,7 +75,7 @@ function parseDistArgs(args) {
       continue;
     }
     if (arg === "--help") {
-      const error = new Error(distUsage());
+      const error = new Error(distUsage()) as UsageError;
       error.code = "USAGE";
       throw error;
     }
@@ -68,34 +90,33 @@ function parseDistArgs(args) {
   };
 }
 
-function readManifest(pluginDir) {
+function readManifest(pluginDir: string): ManifestInfo {
   const manifestPath = path.join(pluginDir, "openvcs.plugin.json");
   if (!fs.existsSync(manifestPath) || !fs.statSync(manifestPath).isFile()) {
     throw new Error(`missing openvcs.plugin.json at ${manifestPath}`);
   }
 
-  let manifest;
+  let manifest: unknown;
   try {
     manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  } catch (error) {
-    throw new Error(`parse ${manifestPath}: ${error.message}`);
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`parse ${manifestPath}: ${detail}`);
   }
 
-  const pluginId = typeof manifest.id === "string" ? manifest.id.trim() : "";
+  const pluginId =
+    typeof (manifest as { id?: unknown }).id === "string"
+      ? ((manifest as { id: string }).id.trim() as string)
+      : "";
   if (!pluginId) {
     throw new Error(`manifest ${manifestPath} is missing a string 'id'`);
   }
-  if (
-    pluginId === "." ||
-    pluginId === ".." ||
-    pluginId.includes("/") ||
-    pluginId.includes("\\")
-  ) {
+  if (pluginId === "." || pluginId === ".." || pluginId.includes("/") || pluginId.includes("\\")) {
     throw new Error(`manifest id must not contain path separators: ${pluginId}`);
   }
 
-  const moduleExec =
-    typeof manifest.module?.exec === "string" ? manifest.module.exec.trim() : undefined;
+  const moduleValue = (manifest as { module?: { exec?: unknown } }).module;
+  const moduleExec = typeof moduleValue?.exec === "string" ? moduleValue.exec.trim() : undefined;
 
   return {
     pluginId,
@@ -104,7 +125,7 @@ function readManifest(pluginDir) {
   };
 }
 
-function validateDeclaredModuleExec(pluginDir, moduleExec) {
+function validateDeclaredModuleExec(pluginDir: string, moduleExec: string | undefined): void {
   if (!moduleExec) {
     return;
   }
@@ -128,12 +149,12 @@ function validateDeclaredModuleExec(pluginDir, moduleExec) {
   }
 }
 
-function hasPackageJson(pluginDir) {
+function hasPackageJson(pluginDir: string): boolean {
   const packageJsonPath = path.join(pluginDir, "package.json");
   return fs.existsSync(packageJsonPath) && fs.lstatSync(packageJsonPath).isFile();
 }
 
-function runCommand(program, args, cwd, verbose) {
+function runCommand(program: string, args: string[], cwd: string, verbose: boolean): void {
   if (verbose) {
     process.stderr.write(`Running command in ${cwd}: ${program} ${args.join(" ")}\n`);
   }
@@ -142,7 +163,7 @@ function runCommand(program, args, cwd, verbose) {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-  });
+  }) as CommandResult;
 
   if (result.error) {
     throw new Error(`failed to spawn '${program}' in ${cwd}: ${result.error.message}`);
@@ -164,7 +185,7 @@ function runCommand(program, args, cwd, verbose) {
   );
 }
 
-function ensurePackageLock(pluginDir, verbose) {
+function ensurePackageLock(pluginDir: string, verbose: boolean): void {
   if (!hasPackageJson(pluginDir)) {
     return;
   }
@@ -184,7 +205,7 @@ function ensurePackageLock(pluginDir, verbose) {
   );
 }
 
-function copyNpmFilesToStaging(pluginDir, bundleDir) {
+function copyNpmFilesToStaging(pluginDir: string, bundleDir: string): void {
   const packageJsonPath = path.join(pluginDir, "package.json");
   const lockPath = path.join(pluginDir, "package-lock.json");
 
@@ -199,7 +220,7 @@ function copyNpmFilesToStaging(pluginDir, bundleDir) {
   copyFileStrict(lockPath, path.join(bundleDir, "package-lock.json"));
 }
 
-function rejectNativeAddonsRecursive(dirPath) {
+function rejectNativeAddonsRecursive(dirPath: string): void {
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   for (const entry of entries) {
     const entryPath = path.join(dirPath, entry.name);
@@ -215,14 +236,12 @@ function rejectNativeAddonsRecursive(dirPath) {
       continue;
     }
     if (entry.name.toLowerCase().endsWith(".node")) {
-      throw new Error(
-        `native Node addon files are not supported in portable bundles: ${entryPath}`
-      );
+      throw new Error(`native Node addon files are not supported in portable bundles: ${entryPath}`);
     }
   }
 }
 
-function installNpmDependencies(pluginDir, bundleDir, verbose) {
+function installNpmDependencies(pluginDir: string, bundleDir: string, verbose: boolean): void {
   copyNpmFilesToStaging(pluginDir, bundleDir);
   runCommand(
     npmExecutable(),
@@ -241,7 +260,7 @@ function installNpmDependencies(pluginDir, bundleDir, verbose) {
   rejectNativeAddonsRecursive(nodeModulesPath);
 }
 
-function copyIcon(pluginDir, bundleDir) {
+function copyIcon(pluginDir: string, bundleDir: string): void {
   for (const extension of ICON_EXTENSIONS) {
     const fileName = `icon.${extension}`;
     const sourcePath = path.join(pluginDir, fileName);
@@ -253,11 +272,11 @@ function copyIcon(pluginDir, bundleDir) {
   }
 }
 
-function uniqueStagingDir(outDir) {
+function uniqueStagingDir(outDir: string): string {
   return path.join(outDir, `.openvcs-plugin-staging-${Date.now()}-${process.pid}`);
 }
 
-async function writeTarGz(outPath, baseDir, folderName) {
+async function writeTarGz(outPath: string, baseDir: string, folderName: string): Promise<void> {
   const folderPath = path.join(baseDir, folderName);
   rejectSymlinksRecursive(folderPath);
   await tar.create(
@@ -274,7 +293,7 @@ async function writeTarGz(outPath, baseDir, folderName) {
   );
 }
 
-async function bundlePlugin(parsedArgs) {
+export async function bundlePlugin(parsedArgs: DistArgs): Promise<string> {
   const { pluginDir, outDir, verbose, noNpmDeps } = parsedArgs;
   if (verbose) {
     process.stderr.write(`Bundling plugin from: ${pluginDir}\n`);
@@ -323,17 +342,12 @@ async function bundlePlugin(parsedArgs) {
   }
 }
 
-module.exports = {
-  bundlePlugin,
-  distUsage,
-  parseDistArgs,
-  __private: {
-    ICON_EXTENSIONS,
-    copyIcon,
-    readManifest,
-    rejectNativeAddonsRecursive,
-    uniqueStagingDir,
-    validateDeclaredModuleExec,
-    writeTarGz,
-  },
+export const __private = {
+  ICON_EXTENSIONS,
+  copyIcon,
+  readManifest,
+  rejectNativeAddonsRecursive,
+  uniqueStagingDir,
+  validateDeclaredModuleExec,
+  writeTarGz,
 };

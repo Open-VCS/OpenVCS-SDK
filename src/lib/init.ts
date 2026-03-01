@@ -1,16 +1,41 @@
-const fs = require("node:fs");
-const path = require("node:path");
-const readline = require("node:readline/promises");
-const { stdin, stdout } = require("node:process");
-const { spawnSync } = require("node:child_process");
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as readline from "node:readline/promises";
+import { stdin, stdout } from "node:process";
+import { spawnSync } from "node:child_process";
 
-const packageJson = require("../package.json");
+const packageJson: { version: string } = require("../package.json");
 
-function initUsage(commandName = "openvcs") {
+type UsageError = Error & { code?: string };
+
+interface InitAnswers {
+  targetDir: string;
+  kind: "module" | "theme";
+  pluginId: string;
+  pluginName: string;
+  pluginVersion: string;
+  defaultEnabled: boolean;
+  runNpmInstall: boolean;
+}
+
+interface CollectAnswersOptions {
+  forceTheme: boolean;
+  targetHint?: string;
+}
+
+interface InitCommandError {
+  code?: string;
+}
+
+function npmExecutable(): string {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+export function initUsage(commandName = "openvcs"): string {
   return `Usage: ${commandName} init [--theme] [target-dir]\n\nOptions:\n  --theme                Start with a theme-only plugin template\n`;
 }
 
-function sanitizeIdToken(raw) {
+function sanitizeIdToken(raw: string): string {
   let output = "";
   let lastWasSeparator = false;
   for (const char of raw) {
@@ -28,13 +53,13 @@ function sanitizeIdToken(raw) {
   return output.replace(/^-+|-+$/g, "");
 }
 
-function defaultPluginIdFromDir(targetDir) {
+function defaultPluginIdFromDir(targetDir: string): string {
   const name = path.basename(targetDir) || "openvcs-plugin";
   const token = sanitizeIdToken(name);
   return token || "openvcs.plugin";
 }
 
-function defaultPluginNameFromId(pluginId) {
+function defaultPluginNameFromId(pluginId: string): string {
   const words = pluginId
     .split(/[._-]+/)
     .map((word) => word.trim())
@@ -43,18 +68,22 @@ function defaultPluginNameFromId(pluginId) {
   return words.length > 0 ? words.join(" ") : "OpenVCS Plugin";
 }
 
-function npmExecutable() {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
-}
-
-async function promptText(rl, label, defaultValue = "") {
+async function promptText(
+  rl: readline.Interface,
+  label: string,
+  defaultValue = ""
+): Promise<string> {
   const suffix = defaultValue ? ` [${defaultValue}]` : "";
   const answer = await rl.question(`${label}${suffix}: `);
   const trimmed = answer.trim();
   return trimmed || defaultValue;
 }
 
-async function promptBoolean(rl, label, defaultValue) {
+async function promptBoolean(
+  rl: readline.Interface,
+  label: string,
+  defaultValue: boolean
+): Promise<boolean> {
   const suffix = defaultValue ? "Y/n" : "y/N";
   while (true) {
     const answer = await rl.question(`${label} (${suffix}): `);
@@ -72,29 +101,29 @@ async function promptBoolean(rl, label, defaultValue) {
   }
 }
 
-function writeJson(filePath, value) {
+function writeJson(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function writeText(filePath, content) {
+function writeText(filePath: string, content: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content, "utf8");
 }
 
-function directoryHasEntries(targetDir) {
+function directoryHasEntries(targetDir: string): boolean {
   const entries = fs.readdirSync(targetDir);
   return entries.length > 0;
 }
 
-async function collectAnswers({ forceTheme, targetHint }) {
+async function collectAnswers({ forceTheme, targetHint }: CollectAnswersOptions): Promise<InitAnswers> {
   const defaultTarget = targetHint || path.join(process.cwd(), "openvcs-plugin");
   const rl = readline.createInterface({ input: stdin, output: stdout });
   try {
     const targetText = await promptText(rl, "Target directory", defaultTarget);
     const targetDir = path.resolve(targetText);
 
-    let kind = "module";
+    let kind: "module" | "theme" = "module";
     if (forceTheme) {
       kind = "theme";
     } else {
@@ -148,7 +177,7 @@ async function collectAnswers({ forceTheme, targetHint }) {
   }
 }
 
-function runNpmInstall(targetDir) {
+function runNpmInstall(targetDir: string): void {
   const result = spawnSync(npmExecutable(), ["install"], {
     cwd: targetDir,
     stdio: "inherit",
@@ -161,7 +190,7 @@ function runNpmInstall(targetDir) {
   }
 }
 
-function writeCommonFiles(answers) {
+function writeCommonFiles(answers: InitAnswers): void {
   writeJson(path.join(answers.targetDir, "openvcs.plugin.json"), {
     id: answers.pluginId,
     name: answers.pluginName,
@@ -172,7 +201,7 @@ function writeCommonFiles(answers) {
   writeText(path.join(answers.targetDir, ".gitignore"), "node_modules/\ndist/\n");
 }
 
-function writeModuleTemplate(answers) {
+function writeModuleTemplate(answers: InitAnswers): void {
   writeCommonFiles(answers);
   writeJson(path.join(answers.targetDir, "package.json"), {
     name: answers.pluginId,
@@ -209,7 +238,7 @@ function writeModuleTemplate(answers) {
   );
 }
 
-function writeThemeTemplate(answers) {
+function writeThemeTemplate(answers: InitAnswers): void {
   writeCommonFiles(answers);
   writeJson(path.join(answers.targetDir, "package.json"), {
     name: answers.pluginId,
@@ -234,9 +263,9 @@ function writeThemeTemplate(answers) {
   });
 }
 
-async function runInitCommand(args) {
+export async function runInitCommand(args: string[]): Promise<string> {
   let forceTheme = false;
-  let targetHint;
+  let targetHint: string | undefined;
 
   for (const arg of args) {
     if (arg === "--theme") {
@@ -244,7 +273,7 @@ async function runInitCommand(args) {
       continue;
     }
     if (arg === "--help") {
-      const error = new Error(initUsage());
+      const error = new Error(initUsage()) as UsageError;
       error.code = "USAGE";
       throw error;
     }
@@ -291,7 +320,11 @@ async function runInitCommand(args) {
   return answers.targetDir;
 }
 
-module.exports = {
-  initUsage,
-  runInitCommand,
-};
+export function isUsageError(error: unknown): error is InitCommandError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as InitCommandError).code === "string"
+  );
+}

@@ -1,12 +1,13 @@
 # Repository Guidelines
 
 ## Project structure & module responsibilities
-- npm package entry is at repo root (`package.json`, `bin/`, `lib/`, `test/`).
-- `bin/openvcs.js` is the executable entrypoint installed by npm.
-- `lib/cli.js` routes subcommands.
-- `lib/dist.js` implements plugin packaging (`openvcs dist`).
-- `lib/init.js` implements interactive plugin scaffolding (`openvcs init`).
-- `lib/fs-utils.js` contains file-copy and path safety helpers.
+- SDK source is authored in `src/` and compiled to runtime files in `bin/` and `lib/`.
+- npm package entry is at repo root (`package.json`, `src/`, `bin/`, `lib/`, `test/`).
+- `src/bin/openvcs.ts` compiles to the executable entrypoint installed by npm (`bin/openvcs.js`).
+- `src/lib/cli.ts` routes subcommands.
+- `src/lib/dist.ts` implements plugin packaging (`openvcs dist`).
+- `src/lib/init.ts` implements interactive plugin scaffolding (`openvcs init`).
+- `src/lib/fs-utils.ts` contains file-copy and path safety helpers.
 - Build outputs go under plugin `dist/` folders.
 
 ## Architecture reference
@@ -16,14 +17,17 @@
 
 ## Build, test, and tooling commands
 - `npm install` (install SDK dependencies).
-- `npm test` (run Node tests via `node --test`).
+- `npm run build` (compile TypeScript sources to `bin/` and `lib/`).
+- `npm test` (compile then run Node tests via `node --test`).
+- `npm run openvcs -- <args>` (run the local CLI with a prebuild step).
 - `openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce `.ovcsp` bundles.
 - `openvcs init [--theme] [dir]` to scaffold plugin projects.
 - Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
 
 ## Coding style & conventions
-- Use CommonJS (`require`/`module.exports`) and Node 18+ APIs.
-- Prefer small, focused modules in `lib/` and keep files under 1000 lines.
+- Author code in TypeScript (`src/**/*.ts`) targeting Node 18+.
+- Compiled outputs in `bin/` and `lib/` are generated artifacts; do not edit them manually.
+- Prefer small, focused modules in `src/lib/` and keep files under 1000 lines.
 - Use clear error messages that include the relevant path/flag/context.
 - Keep path validation strict for security-sensitive code paths.
 - API surfaces should return rich error messages explaining path, capability, or validation issues.

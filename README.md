@@ -23,6 +23,31 @@ One-off usage without adding to a project:
 npx --package @openvcs/sdk openvcs --help
 ```
 
+## SDK development
+
+This repository is authored in TypeScript under `src/` and compiles runtime files
+to `bin/` and `lib/`.
+
+Build the SDK:
+
+```bash
+npm run build
+```
+
+Run tests (builds first):
+
+```bash
+npm test
+```
+
+Run the local CLI through npm scripts:
+
+```bash
+npm run openvcs -- --help
+npm run openvcs -- init --help
+npm run openvcs -- dist --help
+```
+
 ## Scaffold a plugin
 
 Interactive module plugin scaffold:
@@ -82,6 +107,7 @@ openvcs init --help
 Stable releases are published from `.github/workflows/release.yml`.
 
 - npm publishes use npm Trusted Publishing (OIDC), so no `NPM_TOKEN` is required.
+- `npm prepack` compiles TypeScript so published packages include `bin/` and `lib/` JS outputs.
 
 ## License
 
