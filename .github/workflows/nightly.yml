@@ -1,301 +1,51 @@
 name: Nightly
-run-name: "OpenVCS-SDK Nightly • Run #${{ github.run_number }} • ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}"
+run-name: "OpenVCS-SDK Nightly Checks • Run #${{ github.run_number }}"
 
 on:
   schedule:
     # 01:40 UTC daily
     - cron: '40 1 * * *'
   workflow_dispatch:
-    inputs:
-      force:
-        description: Build even if no changes since last nightly tag
-        type: boolean
-        required: false
-        default: false
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
-env:
-  TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
-
 jobs:
-  check-changes:
-    name: Check if target ref changed since last nightly
+  rust-checks:
+    name: Rust checks and tests
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    outputs:
-      changed: ${{ steps.diff.outputs.changed }}
-      since_sha: ${{ steps.diff.outputs.since_sha }}
-      ahead_count: ${{ steps.diff.outputs.ahead_count }}
-    steps:
-      - name: Checkout target ref
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ env.TARGET_REF }}
-          fetch-depth: 0
-
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Determine diff vs openvcs-sdk-nightly
-        id: diff
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="openvcs-sdk-nightly"
-
-          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "changed=true"       >> "$GITHUB_OUTPUT"
-            echo "since_sha=(none)"   >> "$GITHUB_OUTPUT"
-            echo "ahead_count=INIT"   >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          SINCE_SHA="$(git rev-list -n 1 "$TAG")"
-          echo "since_sha=$SINCE_SHA" >> "$GITHUB_OUTPUT"
-
-          if git diff --quiet "$TAG"..HEAD -- src Cargo.toml Cargo.lock; then
-            echo "changed=false"      >> "$GITHUB_OUTPUT"
-            echo "ahead_count=0"      >> "$GITHUB_OUTPUT"
-          else
-            AHEAD="$(git rev-list --count "$TAG"..HEAD -- src Cargo.toml Cargo.lock || echo 1)"
-            echo "changed=true"       >> "$GITHUB_OUTPUT"
-            echo "ahead_count=$AHEAD" >> "$GITHUB_OUTPUT"
-          fi
-
-  build-linux-windows:
-    name: Build (Linux + Windows)
-    needs: check-changes
-    if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      actions: write
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_CACHE_SIZE: '2G'
-      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
-      CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
-      CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
-    steps:
-      - name: Checkout target ref
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: ${{ env.TARGET_REF }}
-          fetch-depth: 0
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
-
-      - name: Install cross-tooling
-        run: sudo apt-get update && sudo apt-get install -y mingw-w64 zip
-
-      - name: Add Windows target
-        run: rustup target add x86_64-pc-windows-gnu
-
-      - name: Cargo fmt (check)
-        run: cargo fmt --all -- --check
-
-      - name: Cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Build Linux
-        run: cargo build --release
-
-      - name: Build Windows
-        run: cargo build --release --target x86_64-pc-windows-gnu
-
-      - name: Package Linux
-        run: |
-          set -euo pipefail
-          ARCH="$(uname -m)"
-          mkdir -p dist
-          cp target/release/openvcs-plugin "dist/openvcs-plugin-Linux-${ARCH}"
-          tar -C dist -czf "openvcs-plugin-Linux-${ARCH}.tar.gz" "openvcs-plugin-Linux-${ARCH}"
-          rm "dist/openvcs-plugin-Linux-${ARCH}"
-          rmdir dist
-
-      - name: Package Windows
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          cp target/x86_64-pc-windows-gnu/release/openvcs-plugin.exe dist/openvcs-plugin-Windows-x86_64.exe
-          zip -j openvcs-plugin-Windows-x86_64.zip dist/openvcs-plugin-Windows-x86_64.exe
-          rm dist/openvcs-plugin-Windows-x86_64.exe
-          rmdir dist
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: sdk-linux-windows
-          path: |
-            openvcs-plugin-Linux-*.tar.gz
-            openvcs-plugin-Windows-*.zip
-
-  build-macos:
-    name: Build (macOS)
-    needs: check-changes
-    if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
-    runs-on: macos-latest
-    permissions:
-      contents: read
-      actions: write
+    timeout-minutes: 20
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
       SCCACHE_CACHE_SIZE: '2G'
     steps:
-      - name: Checkout target ref
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ env.TARGET_REF }}
           fetch-depth: 0
 
       - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6
+        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
         with:
           toolchain: stable
           components: rustfmt, clippy
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
 
       - name: Cargo fmt (check)
-        run: cargo fmt --all -- --check
+        run: cargo fmt --manifest-path native/Cargo.toml --all -- --check
 
       - name: Cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --manifest-path native/Cargo.toml --all-targets -- -D warnings
 
-      - name: Build macOS
-        run: cargo build --release
-
-      - name: Package macOS
-        run: |
-          set -euo pipefail
-          ARCH="$(uname -m)"
-          mkdir -p dist
-          cp target/release/openvcs-plugin "dist/openvcs-plugin-macos-${ARCH}"
-          tar -C dist -czf "openvcs-plugin-macos-${ARCH}.tar.gz" "openvcs-plugin-macos-${ARCH}"
-          rm "dist/openvcs-plugin-macos-${ARCH}"
-          rmdir dist
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: sdk-macos
-          path: openvcs-plugin-macos-*.tar.gz
-
-  release:
-    name: Publish rolling nightly prerelease
-    needs: [check-changes, build-linux-windows, build-macos]
-    if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout target ref
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ env.TARGET_REF }}
-          fetch-depth: 0
-
-      - name: Compute metadata (date, short SHA, compare, changelog)
-        id: meta
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const date = new Date().toISOString().slice(0, 10);
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const target = process.env.TARGET_REF || 'Dev';
-            let branch_sha = context.sha;
-            try {
-              const branch = await github.rest.repos.getBranch({ owner, repo, branch: target });
-              branch_sha = branch?.data?.commit?.sha || context.sha;
-            } catch (e) {
-              branch_sha = context.sha;
-            }
-            const short = branch_sha.substring(0, 7);
-            const basehead = `openvcs-sdk-nightly...${target}`;
-            let compare_url = `${context.serverUrl}/${owner}/${repo}/compare/${basehead}`;
-            let changelog = '';
-            try {
-              const res = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead });
-              const commits = res?.data?.commits ?? [];
-              if (commits.length === 0) {
-                changelog = `No changes detected.`;
-              } else {
-                const items = commits.map(c => {
-                  const sha = (c.sha || '').substring(0, 7);
-                  const msg = (c.commit?.message || '').split('\\n')[0];
-                  const author = c.author?.login || c.commit?.author?.name || 'unknown';
-                  return `- ${sha} ${msg} (@${author})`;
-                });
-                changelog = items.join('\\n');
-              }
-            } catch (e) {
-              changelog = `First nightly or previous tag unavailable; showing recent commits at ${target}.`;
-              compare_url = `${context.serverUrl}/${owner}/${repo}/tree/${target}`;
-            }
-            core.setOutput('short_sha', short);
-            core.setOutput('branch_sha', branch_sha);
-            core.setOutput('date', date);
-            core.setOutput('compare_url', compare_url);
-            core.setOutput('changelog', changelog);
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v7
-        with:
-          path: artifacts
-
-      - name: Remove existing 'openvcs-sdk-nightly' release & tag (if any)
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo  = context.repo.repo;
-            const tag   = 'openvcs-sdk-nightly';
-            const releases = await github.paginate(github.rest.repos.listReleases, { owner, repo, per_page: 100 });
-            const rel = releases.find(r => r.tag_name === tag);
-            if (rel) await github.rest.repos.deleteRelease({ owner, repo, release_id: rel.id });
-            try {
-              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
-            } catch (e) {
-              if (e.status !== 422) throw e;
-            }
-
-      - name: Create Nightly prerelease
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
-        with:
-          tag_name: openvcs-sdk-nightly
-          name: "OpenVCS-SDK Nightly ${{ steps.meta.outputs.date }} (${{ env.TARGET_REF }}@${{ steps.meta.outputs.short_sha }})"
-          prerelease: true
-          generate_release_notes: false
-          body: |
-            Nightly build from `${{ env.TARGET_REF }}`.
-            Date (UTC): ${{ steps.meta.outputs.date }}
-            Compare: ${{ steps.meta.outputs.compare_url }}
-            Since: ${{ needs.check-changes.outputs.since_sha }}
-            Ahead (relevant commits): ${{ needs.check-changes.outputs.ahead_count }}
-            Commit: ${{ steps.meta.outputs.branch_sha }} (${{ env.TARGET_REF }}@${{ steps.meta.outputs.short_sha }})
-            Runner: ${{ runner.os }} • Run #${{ github.run_number }}
-
-            Changes since last nightly:
-            ${{ steps.meta.outputs.changelog }}
-          files: |
-            artifacts/**/*
+      - name: Cargo test
+        run: cargo test --manifest-path native/Cargo.toml

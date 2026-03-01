@@ -1,47 +1,50 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- Core Rust sources live in `src/`.
-- CLI entrypoints:
-  - `src/main.rs` builds the `openvcs-plugin` binary.
-  - `src/bin/cargo-openvcs.rs` builds the `cargo-openvcs` subcommand.
-- Packaging logic and most tests are in `src/dist.rs`; `src/lib.rs` exports SDK modules.
-- Build outputs are written to `dist/` (bundles) and `target/` (Cargo artifacts).
+## Project structure & module responsibilities
+- npm package entry is at repo root (`package.json`, `bin/`, `lib/`, `scripts/`, `vendor/`).
+- Native Rust implementation lives in `native/`.
+- `native/src/bin/cargo-openvcs.rs` produces the Cargo subcommand used as `cargo openvcs ...`.
+- `native/src/bin/openvcs-sdk.rs` provides the standalone SDK CLI used by npm consumers.
+- Packaging logic lives in `native/src/dist/` (CLI args, manifest parsing, bundle assembly) with shared file helpers in `native/src/build/`; `native/src/lib.rs` exports helpers consumed by the CLI and tests.
+- Build outputs go under plugin `dist/` folders and `native/target/` (Cargo artifacts).
 
-## Architecture Reference
-- Read `ARCHITECTURE.md` before making structural or workflow changes.
-- Keep implementation aligned with its stated boundaries (SDK focuses on packaging, not runtime hosting).
-- If a PR changes packaging flow, bundle format expectations, or module responsibilities, update `ARCHITECTURE.md` in the same PR.
+## Architecture reference
+- Read `native/ARCHITECTURE.md` before changing structural or workflow components; the SDK is focused on plugin packaging, not runtime execution.
+- Bundles follow the `.ovcsp` format (tar.xz with `openvcs.plugin.json` + `bin/` entries). Keep manifest fields consistent with host expectations documented in `Client/docs/plugin architecture.md`.
 
-## Build, Test, and Development Commands
-- `cargo build` - compile the SDK binaries and library.
-- `cargo test` - run unit tests (including `src/dist.rs` tests).
-- `cargo fmt --all` - format code.
-- `cargo clippy --all-targets -- -D warnings` - lint and fail on warnings (CI parity).
-- `just fix` - run `cargo fmt` and `cargo clippy --fix` for local cleanup.
-- `cargo run -p openvcs-sdk -- --plugin-dir /path/to/plugin` - bundle a plugin into `.ovcsp`.
+## Build, test, and tooling commands
+- `npm install` (install npm wrapper dependencies in plugin projects).
+- `cargo build --manifest-path native/Cargo.toml` (compile SDK binaries/library).
+- `cargo test --manifest-path native/Cargo.toml` (unit tests in `native/src/tests/` and supporting helpers).
+- `cargo fmt --manifest-path native/Cargo.toml --all`; keep formatting clean.
+- `cargo clippy --manifest-path native/Cargo.toml --all-targets -- -D warnings`; CI enforces linting.
+- `cargo doc --manifest-path native/Cargo.toml --no-deps` to verify docs build.
+- `cargo openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` or `openvcs-sdk dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce `.ovcsp` bundles.
+- Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
 
-## Coding Style & Naming Conventions
-- Follow default Rust style (`rustfmt`); use 4-space indentation.
-- Keep modules focused; place CLI parsing/orchestration in bin files and reusable logic in `src/dist.rs` or library modules.
-- Use `snake_case` for functions/files, `PascalCase` for types, and `SCREAMING_SNAKE_CASE` for constants.
-- Prefer explicit error messages with context (path/action) for CLI-facing failures.
+## Coding style & conventions
+- Follow default Rust formatting (`rustfmt`/`cargo fmt`). Use 4-space indentation in Rust sources, `snake_case` for functions/modules, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.
+- API surfaces should return rich error messages explaining path, capability, or validation issues.
 
-# ExecPlans
+## Documentation & licensing
 
-When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
+- When you change behavior, workflows, CLI flags, bundle layout, or manifest expectations, ALWAYS update the relevant documentation in the same change, even if the user does not explicitly ask.
+- All functions must include documentation comments.
+- All code files MUST be no more than 1000 lines; split files before they exceed this limit.
+- All new Rust source files must include a license header:
+  ```rust
+  // Copyright © 2025-2026 OpenVCS Contributors
+  // SPDX-License-Identifier: GPL-3.0-or-later
+  ```
+- All public API items (functions, structs, enums, traits, modules) must have doc comments (`///`).
+- Add module-level docs (`//!`) to new modules explaining their purpose.
+- Run `cargo doc --no-deps` to verify documentation builds without warnings.
 
-## Testing Guidelines
-- Use Rust’s built-in test framework (`#[test]` with `cargo test`).
-- Keep tests near related logic (existing pattern in `src/dist.rs`).
-- Name tests descriptively, e.g. `bundles_plugin_manifest`.
-- Before opening a PR, run: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test`.
+## Testing guidelines
+- Keep Rust tests next to the logic they cover (e.g., `native/src/tests/`). Name tests descriptively (e.g., `bundles_plugin_manifest`).
+- Before PRs, run the formatter/linter/test trio from above.
 
-## Commit & Pull Request Guidelines
-- Current history favors short, imperative commit subjects (e.g., `Fix CI`, `Add build status badges to README`).
-- Keep subject lines concise (about 50 chars when possible) and focused on one change.
-- PRs should include:
-  - a clear summary of behavior changes,
-  - linked issue(s) when applicable,
-  - test/lint evidence (commands run),
-  - CLI output snippets when user-facing behavior changes.
+## Commit & PR guidelines
+- Use short, imperative commit messages (<=72 chars) such as `sdk: validate manifest fields`.
+- PRs should explain the new workflow, list commands/tests run, and surface any user-visible bundle changes (new capabilities, layout updates, etc.).
+- Update this AGENTS whenever SDK workflows or packaging expectations change so the guidance stays fresh.

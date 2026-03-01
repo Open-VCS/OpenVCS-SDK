@@ -1,3 +1,30 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! `cargo openvcs` subcommand binary.
+//!
+//! This binary provides the `cargo openvcs dist` command for bundling OpenVCS plugins.
+//! It can be invoked as either `cargo openvcs dist` or `cargo-openvcs dist`.
+//!
+//! # Usage
+//!
+//! ```text
+//! cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--all] [--fix] [--no-npm-deps]
+//! ```
+//!
+//! # Options
+//!
+//! - `--plugin-dir <path>` - Bundle a specific plugin directory
+//! - `--out <path>` - Output directory (default: `./dist`)
+//! - `--all` - Bundle all plugins found in subdirectories
+//! - `--fix` - Run `cargo fix` before bundling (optional for Rust-based tooling)
+//! - `--no-npm-deps` - Skip npm lockfile generation and dependency bundling
+//!
+//! # Exit Codes
+//!
+//! - `0` - Success
+//! - `1` - Error
+
 use openvcs_sdk::dist::{PluginBuildArgs, bundle_plugin};
 use std::env;
 use std::ffi::OsString;
@@ -5,9 +32,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+/// Prints usage information to stderr.
 fn print_usage() {
     eprintln!(
-        "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--fix]
+        "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--fix] [--no-npm-deps] [-V] [--verbose]
 
 Defaults:
 - If run inside a plugin folder (contains openvcs.plugin.json), bundles that plugin.
@@ -17,18 +45,43 @@ Default output directory: ./dist
 Options:
 - --all: bundle all plugins in the target directory
 - --fix: run `cargo fix` in Rust plugin directories before bundling
+- --no-npm-deps: skip npm dependency lock/install/bundling
+- -V, --verbose: enable verbose output
+
+Global Options:
+- -v, --version: show version information
 "
     );
 }
 
+/// Checks if a directory contains a plugin manifest.
+///
+/// Returns true if `openvcs.plugin.json` exists in the directory.
 fn is_plugin_dir(dir: &Path) -> bool {
     dir.join("openvcs.plugin.json").is_file()
 }
 
+/// Checks if a directory contains a Rust plugin.
+///
+/// Returns true if `Cargo.toml` exists in the directory,
+/// indicating this is a Rust-based plugin that can be built.
 fn is_rust_plugin_dir(dir: &Path) -> bool {
     dir.join("Cargo.toml").is_file()
 }
 
+/// Discovers all plugin directories in a root directory.
+///
+/// Scans subdirectories of the given root and returns paths that
+/// contain valid plugin manifests (`openvcs.plugin.json`).
+///
+/// # Arguments
+///
+/// * `root` - Root directory to scan
+///
+/// # Returns
+///
+/// Returns `Ok(Vec<PathBuf>)` with sorted list of plugin directories,
+/// or `Err(String)` if scanning fails.
 fn discover_plugin_dirs(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     for entry in fs::read_dir(root).map_err(|e| format!("read_dir {}: {e}", root.display()))? {
@@ -45,6 +98,17 @@ fn discover_plugin_dirs(root: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+/// Runs `cargo fix` in the specified plugin directory.
+///
+/// Attempts to fix Rust code before bundling.
+///
+/// # Arguments
+///
+/// * `dir` - Path to the plugin directory
+///
+/// # Returns
+///
+/// Returns `Ok(())` if cargo fix succeeds, or `Err(String)` on failure.
 fn run_cargo_fix(dir: &Path) -> Result<(), String> {
     let mut cmd = std::process::Command::new("cargo");
     cmd.current_dir(dir);
@@ -52,22 +116,7 @@ fn run_cargo_fix(dir: &Path) -> Result<(), String> {
     cmd.arg("--allow-dirty");
     cmd.arg("--allow-staged");
 
-    // Prefer fixing in the wasm32-wasip1 configuration (plugins are compiled to WASI).
-    // If the target isn't available, fall back to a host-target fix.
     let status = cmd
-        .arg("--target")
-        .arg("wasm32-wasip1")
-        .status()
-        .map_err(|e| format!("failed to spawn cargo fix: {e}"))?;
-    if status.success() {
-        return Ok(());
-    }
-
-    let status = std::process::Command::new("cargo")
-        .current_dir(dir)
-        .arg("fix")
-        .arg("--allow-dirty")
-        .arg("--allow-staged")
         .status()
         .map_err(|e| format!("failed to spawn cargo fix: {e}"))?;
     if status.success() {
@@ -81,6 +130,16 @@ fn run_cargo_fix(dir: &Path) -> Result<(), String> {
     }
 }
 
+/// Processes the `dist` command arguments and bundles plugins.
+///
+/// # Arguments
+///
+/// * `args` - Command-line arguments following `dist`
+///
+/// # Returns
+///
+/// Returns `Ok(Vec<PathBuf>)` containing paths to created bundles,
+/// or `Err(String)` on failure.
 fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     let cwd =
         env::current_dir().map_err(|e| format!("failed to determine current directory: {e}"))?;
@@ -88,6 +147,8 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     let mut out_dir = cwd.join("dist");
     let mut all = false;
     let mut fix = false;
+    let mut verbose = false;
+    let mut no_npm_deps = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         let s = arg.to_string_lossy();
@@ -109,6 +170,12 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
             }
             "--fix" => {
                 fix = true;
+            }
+            "-V" | "--verbose" => {
+                verbose = true;
+            }
+            "--no-npm-deps" => {
+                no_npm_deps = true;
             }
             "--help" => {
                 print_usage();
@@ -156,6 +223,8 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
         let parsed = PluginBuildArgs {
             plugin_dir: dir,
             out_dir: out_dir.clone(),
+            verbose,
+            no_npm_deps,
         };
         let path = bundle_plugin(&parsed)?;
         out_paths.push(path);
@@ -163,6 +232,9 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     Ok(out_paths)
 }
 
+/// Entry point for the `cargo openvcs` subcommand.
+///
+/// Handles the `dist` subcommand and routes to [`run_dist_command`].
 fn main() -> ExitCode {
     let mut args: Vec<OsString> = env::args_os().skip(1).collect();
     // Some environments may invoke `cargo-openvcs` as `cargo openvcs ...` but still pass
@@ -172,6 +244,16 @@ fn main() -> ExitCode {
     if matches!(args.first().and_then(|a| a.to_str()), Some("openvcs")) {
         args.remove(0);
     }
+
+    // Handle global -v/--version flag before subcommand routing
+    if args.iter().any(|a| {
+        let s = a.to_string_lossy();
+        s == "-v" || s == "--version"
+    }) {
+        println!("cargo-openvcs {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+
     match args.first().and_then(|a| a.to_str()) {
         Some("dist") => {
             args.remove(0);

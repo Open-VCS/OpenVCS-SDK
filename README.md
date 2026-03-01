@@ -1,16 +1,68 @@
-# OpenVCS-SDK
+# @openvcs/sdk
+
 [![Nightly](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/nightly.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/nightly.yml)
 [![Dev](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/ci.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/ci.yml)
 [![Stable](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/release.yml/badge.svg?branch=Stable)](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/release.yml)
 
-Tooling for building and packaging OpenVCS plugins.
+OpenVCS SDK for npm-based plugin development.
 
-## `openvcs-plugin`
-- Bundle a plugin into a single `.ovcsp` tar.xz: `cargo run -p openvcs-sdk -- --plugin-dir /path/to/plugin`
-- Plugin manifests must use WASM components (`module.exec`/`functions.exec`) and/or `themes/`; JavaScript `entry` is rejected.
+Install this package in plugin projects, scaffold a starter plugin, and package
+plugins into `.ovcsp` bundles with `npm run build`.
 
-## Development
-- Required: `cargo fmt --all`
-- CI enforces: `cargo fmt --all -- --check`
-- CI also runs: `cargo clippy --all-targets -- -D warnings`
-- Convenience (if you have `just` installed): `just fix`
+## Install
+
+```bash
+npm install --save-dev @openvcs/sdk
+```
+
+## Scaffold a plugin
+
+Interactive module plugin scaffold:
+
+```bash
+npx @openvcs/sdk init my-plugin
+```
+
+The generated module template includes TypeScript and Node typings (`@types/node`).
+
+Interactive theme plugin scaffold:
+
+```bash
+npx @openvcs/sdk init --theme my-theme
+```
+
+## Build a `.ovcsp` bundle
+
+In a generated plugin folder:
+
+```bash
+npm run build
+```
+
+This produces `dist/<plugin-id>.ovcsp`.
+
+Dependency behavior while packaging:
+
+- npm dependency bundling is enabled by default when `package.json` exists.
+- If `package-lock.json` is missing, SDK generates it in the plugin worktree.
+- Dependencies are installed into the bundle staging dir with:
+  - `npm ci --omit=dev --ignore-scripts --no-bin-links --no-audit --no-fund`
+- Disable npm dependency processing with `--no-npm-deps`.
+- Native Node addons (`*.node`) are rejected for portable bundles.
+
+## Native implementation
+
+The native implementation (Rust crate and binaries) lives in `native/`.
+
+See `native/README.md` for Rust-focused development and crates.io publishing.
+
+## Releases
+
+Stable releases are published from `.github/workflows/release.yml`.
+
+- crates.io publishes use `CARGO_REGISTRY_TOKEN`.
+- npm publishes use npm Trusted Publishing (OIDC), so no `NPM_TOKEN` is required.
+
+## License
+
+Copyright © 2025-2026 OpenVCS Contributors. SPDX-License-Identifier: GPL-3.0-or-later

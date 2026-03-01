@@ -1,6 +1,6 @@
 [package]
 name = "openvcs-sdk"
-version = "0.1.10"
+version = "0.2.0"
 edition = "2024"
 description = "SDK for building/bundling OpenVCS plugins and packaging them as .ovcsp bundles."
 license = "GPL-3.0-or-later"
@@ -12,23 +12,22 @@ keywords = [
     "openvcs",
     "sdk",
     "plugin",
-    "wasi",
-    "wasm"
+    "node",
+    "typescript"
 ]
 
 categories = [
     "command-line-utilities",
-    "development-tools::build-utils",
-    "wasm"
+    "development-tools::build-utils"
 ]
-
-[[bin]]
-name = "openvcs-plugin"
-path = "src/main.rs"
 
 [[bin]]
 name = "cargo-openvcs"
 path = "src/bin/cargo-openvcs.rs"
+
+[[bin]]
+name = "openvcs-sdk"
+path = "src/bin/openvcs-sdk.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
