@@ -7,155 +7,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  id-token: write
 
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  verify-and-publish-crate:
-    name: Verify and publish to crates.io
-    runs-on: ubuntu-24.04
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_CACHE_SIZE: '2G'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
-
-      - name: Cargo fmt (check)
-        run: cargo fmt --manifest-path native/Cargo.toml --all -- --check
-
-      - name: Cargo clippy
-        run: cargo clippy --manifest-path native/Cargo.toml --all-targets -- -D warnings
-
-      - name: Cargo test
-        run: cargo test --manifest-path native/Cargo.toml
-
-      - name: Cargo package (verify)
-        run: cargo package --manifest-path native/Cargo.toml
-
-      - name: Publish crate to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
-            echo "ERROR: CARGO_REGISTRY_TOKEN secret is not set" >&2
-            exit 1
-          fi
-          cargo publish --manifest-path native/Cargo.toml
-
-  create-github-release:
-    name: Create GitHub release
-    runs-on: ubuntu-24.04
-    needs: verify-and-publish-crate
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Resolve release version
-        id: version
-        run: |
-          set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
-          CARGO_VERSION="$(node -e "const fs=require('node:fs'); const text=fs.readFileSync('native/Cargo.toml','utf8'); const m=text.match(/^version\s*=\s*\"([^\"]+)\"/m); if(!m){process.exit(2)}; process.stdout.write(m[1]);")"
-          if [ "$VERSION" != "$CARGO_VERSION" ]; then
-            echo "ERROR: version mismatch between package.json ($VERSION) and native/Cargo.toml ($CARGO_VERSION)" >&2
-            exit 1
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Create release if missing
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists"
-          else
-            gh release create "$TAG" --title "$TAG" --notes "OpenVCS SDK release $TAG"
-          fi
-
-  build-and-upload-binaries:
-    name: Build and upload native binaries
-    needs: create-github-release
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            asset_name: openvcs-sdk-linux-x64
-            binary_path: native/target/release/openvcs-sdk
-          - runner: macos-13
-            asset_name: openvcs-sdk-darwin-x64
-            binary_path: native/target/release/openvcs-sdk
-          - runner: macos-14
-            asset_name: openvcs-sdk-darwin-arm64
-            binary_path: native/target/release/openvcs-sdk
-          - runner: windows-2022
-            asset_name: openvcs-sdk-win32-x64.exe
-            binary_path: native/target/release/openvcs-sdk.exe
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
-        with:
-          toolchain: stable
-
-      - name: Build standalone sdk binary
-        run: cargo build --manifest-path native/Cargo.toml --release --bin openvcs-sdk
-
-      - name: Copy renamed asset (unix)
-        if: runner.os != 'Windows'
-        run: cp "${{ matrix.binary_path }}" "${{ matrix.asset_name }}"
-
-      - name: Copy renamed asset (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Copy-Item "${{ matrix.binary_path }}" "${{ matrix.asset_name }}"
-
-      - name: Upload binary to release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.create-github-release.outputs.tag }}
-        run: gh release upload "$TAG" "${{ matrix.asset_name }}" --clobber
-
   publish-npm:
     name: Publish @openvcs/sdk to npm
     runs-on: ubuntu-24.04
-    needs: build-and-upload-binaries
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -166,7 +28,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
           registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
 
       - name: Verify npm package contents
         run: npm pack --dry-run

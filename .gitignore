@@ -1,9 +1,6 @@
 node_modules/
-vendor/openvcs-sdk
-vendor/openvcs-sdk.exe
 *.tgz
 /dist
 /target
-
 /native/target
 /native/dist
