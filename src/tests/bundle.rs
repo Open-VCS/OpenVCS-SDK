@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::dist::fsops::{ICON_EXTENSIONS, copy_dir_recursive};
+use crate::dist::fsops::{copy_dir_recursive, ICON_EXTENSIONS};
 use crate::dist::manifest::parse_manifest_text;
 use std::collections::BTreeMap;
 use std::io::Cursor;
@@ -42,7 +42,7 @@ fn write_file(path: &Path, content: &[u8]) {
 struct VirtualPlugin {
     manifest_json: String,
     root_files: BTreeMap<String, Vec<u8>>,
-    wasm_execs: BTreeMap<String, Vec<u8>>,
+    module_execs: BTreeMap<String, Vec<u8>>,
 }
 
 impl VirtualPlugin {
@@ -50,7 +50,7 @@ impl VirtualPlugin {
         Self {
             manifest_json: manifest_json.into(),
             root_files: BTreeMap::new(),
-            wasm_execs: BTreeMap::new(),
+            module_execs: BTreeMap::new(),
         }
     }
 
@@ -59,8 +59,8 @@ impl VirtualPlugin {
         self
     }
 
-    fn add_wasm_exec(mut self, exec: &str, content: impl Into<Vec<u8>>) -> Self {
-        self.wasm_execs.insert(exec.to_string(), content.into());
+    fn add_module_exec(mut self, exec: &str, content: impl Into<Vec<u8>>) -> Self {
+        self.module_execs.insert(exec.to_string(), content.into());
         self
     }
 }
@@ -73,9 +73,9 @@ fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8
         .root_files
         .keys()
         .any(|k| k == "themes" || k.starts_with("themes/"));
-    let has_wasm = module_exec.is_some();
+    let has_module = module_exec.is_some();
     let has_ui_or_assets = has_themes;
-    if !has_wasm && !has_ui_or_assets {
+    if !has_module && !has_ui_or_assets {
         return Err("manifest has no module.exec or themes/".to_string());
     }
 
@@ -125,20 +125,19 @@ fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8
             continue;
         }
 
-        if !exec.ends_with(".wasm") {
+        let lower = exec.to_ascii_lowercase();
+        let is_supported =
+            lower.ends_with(".js") || lower.ends_with(".mjs") || lower.ends_with(".cjs");
+        if !is_supported {
             return Err(format!(
-                "manifest exec must end with .wasm (OpenVCS is WASM-only): {exec}"
+                "manifest exec must end with .js/.mjs/.cjs (Node runtime): {exec}"
             ));
         }
 
-        let bytes = plugin.wasm_execs.get(&exec).ok_or_else(|| {
-            format!(
-                "built wasm not found at {} (did cargo build succeed?)",
-                PathBuf::from("<memory>/target/wasm32-wasip1/release")
-                    .join(&exec)
-                    .display()
-            )
-        })?;
+        let bytes = plugin
+            .module_execs
+            .get(&exec)
+            .ok_or_else(|| format!("module entrypoint not found at <memory>/bin/{exec}"))?;
 
         let mut header = tar::Header::new_gnu();
         header.set_size(bytes.len() as u64);
@@ -148,7 +147,7 @@ fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8
             format!("{plugin_id}/bin/{exec}"),
             bytes.as_slice(),
         )
-        .map_err(|e| format!("tar append wasm failed: {e}"))?;
+        .map_err(|e| format!("tar append module failed: {e}"))?;
     }
 
     let encoder = tar
@@ -230,68 +229,68 @@ fn virtual_bundle_allows_themes_only_plugins() {
 }
 
 #[test]
-fn virtual_bundle_rejects_non_wasm_exec() {
-    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "not-wasm" } }"#);
+fn virtual_bundle_rejects_non_node_exec() {
+    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "not-node" } }"#);
     let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
     assert_eq!(
         err,
-        "manifest exec must end with .wasm (OpenVCS is WASM-only): not-wasm"
+        "manifest exec must end with .js/.mjs/.cjs (Node runtime): not-node"
     );
 }
 
 #[test]
 fn virtual_bundle_allows_manifest_entry_field() {
     let plugin = VirtualPlugin::new(
-        r#"{ "id": "x", "entry": "ui/index.html", "module": { "exec": "module.wasm" } }"#,
+        r#"{ "id": "x", "entry": "ui/index.html", "module": { "exec": "module.mjs" } }"#,
     )
-    .add_wasm_exec("module.wasm", b"\0asm");
+    .add_module_exec("module.mjs", b"export {};\n");
     let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
     let entries = read_tar_xz_entries_bytes(&bundle_bytes);
     assert!(entries.contains_key("x/openvcs.plugin.json"));
-    assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"\0asm");
+    assert_eq!(entries.get("x/bin/module.mjs").unwrap(), b"export {};\n");
 }
 
 #[test]
-fn virtual_bundle_errors_when_wasm_missing() {
-    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "module.wasm" } }"#);
+fn virtual_bundle_errors_when_module_missing() {
+    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "module.mjs" } }"#);
     let err = virtual_bundle_tar_xz_bytes(&plugin).unwrap_err();
     assert_eq!(
         err,
-        "built wasm not found at <memory>/target/wasm32-wasip1/release/module.wasm (did cargo build succeed?)"
+        "module entrypoint not found at <memory>/bin/module.mjs"
     );
 }
 
 #[test]
-fn virtual_bundle_includes_wasm_exec_in_bin() {
-    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "module.wasm" } }"#)
-        .add_wasm_exec("module.wasm", b"\0asm");
+fn virtual_bundle_includes_module_exec_in_bin() {
+    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "module.mjs" } }"#)
+        .add_module_exec("module.mjs", b"export {};\n");
 
     let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
     let entries = read_tar_xz_entries_bytes(&bundle_bytes);
-    assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"\0asm");
+    assert_eq!(entries.get("x/bin/module.mjs").unwrap(), b"export {};\n");
 }
 
 #[test]
 fn virtual_bundle_trims_exec_field() {
-    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "  module.wasm  " } }"#)
-        .add_wasm_exec("module.wasm", b"x");
+    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "  module.mjs  " } }"#)
+        .add_module_exec("module.mjs", b"x");
 
     let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
     let entries = read_tar_xz_entries_bytes(&bundle_bytes);
-    assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"x");
+    assert_eq!(entries.get("x/bin/module.mjs").unwrap(), b"x");
 }
 
 #[test]
 fn virtual_bundle_ignores_functions_field() {
     let plugin = VirtualPlugin::new(
-        r#"{ "id": "x", "module": { "exec": "module.wasm" }, "functions": { "exec": "func.wasm" } }"#,
+        r#"{ "id": "x", "module": { "exec": "module.mjs" }, "functions": { "exec": "func.mjs" } }"#,
     )
-    .add_wasm_exec("module.wasm", b"\0asm")
-    .add_wasm_exec("func.wasm", b"\0asm2");
+    .add_module_exec("module.mjs", b"export {};\n")
+    .add_module_exec("func.mjs", b"export {};\n");
     let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
     let entries = read_tar_xz_entries_bytes(&bundle_bytes);
-    assert_eq!(entries.get("x/bin/module.wasm").unwrap(), b"\0asm");
-    assert!(!entries.contains_key("x/bin/func.wasm"));
+    assert_eq!(entries.get("x/bin/module.mjs").unwrap(), b"export {};\n");
+    assert!(!entries.contains_key("x/bin/func.mjs"));
 }
 
 #[test]

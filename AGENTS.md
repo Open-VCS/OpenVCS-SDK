@@ -2,12 +2,12 @@
 
 ## Project structure & module responsibilities
 - `src/bin/cargo-openvcs.rs` produces the `cargo-openvcs` subcommand used as `cargo openvcs ...`.
-- Packaging logic is split across `src/dist/` (CLI args, manifest parsing, bundle assembly) and `src/build/` (WASM build pipeline); `src/lib.rs` exports helpers consumed by the CLI and tests.
+- Packaging logic lives in `src/dist/` (CLI args, manifest parsing, bundle assembly) with shared file helpers in `src/build/`; `src/lib.rs` exports helpers consumed by the CLI and tests.
 - Build outputs go under `dist/` (generated archives) and `target/` (Cargo artifacts).
 
 ## Architecture reference
 - Read `ARCHITECTURE.md` before changing structural or workflow components; the SDK is focused on plugin packaging, not runtime execution.
-- Bundles follow the `.ovcsp` format (tar.xz with `openvcs.plugin.json` + `bin/` entries). Keep the manifest fields consistent with the host expectations defined under `Core/wit/`.
+- Bundles follow the `.ovcsp` format (tar.xz with `openvcs.plugin.json` + `bin/` entries). Keep manifest fields consistent with host expectations documented in `Client/docs/plugin architecture.md`.
 
 ## Build, test, and tooling commands
 - `cargo build` (compile SDK binaries/library).

@@ -35,13 +35,13 @@ fn parse_manifest_text_parses_and_trims_fields() {
     let (id, module_exec) = parse_manifest_text(
         r#"{
   "id": "  my.plugin  ",
-  "module": { "exec": "  module.wasm  " }
+  "module": { "exec": "  module.mjs  " }
 }"#,
         Path::new("<memory>/openvcs.plugin.json"),
     )
     .unwrap();
     assert_eq!(id, "my.plugin");
-    assert_eq!(module_exec.as_deref(), Some("module.wasm"));
+    assert_eq!(module_exec.as_deref(), Some("module.mjs"));
 }
 
 #[test]
@@ -77,12 +77,12 @@ fn parse_manifest_text_treats_whitespace_only_optional_fields_as_none() {
 #[test]
 fn parse_manifest_text_ignores_functions_field() {
     let (id, module_exec) = parse_manifest_text(
-        r#"{ "id": "x", "module": { "exec": "m.wasm" }, "functions": { "exec": "f.wasm" } }"#,
+        r#"{ "id": "x", "module": { "exec": "m.mjs" }, "functions": { "exec": "f.mjs" } }"#,
         Path::new("<memory>/openvcs.plugin.json"),
     )
     .unwrap();
     assert_eq!(id, "x");
-    assert_eq!(module_exec.as_deref(), Some("m.wasm"));
+    assert_eq!(module_exec.as_deref(), Some("m.mjs"));
 }
 
 #[test]

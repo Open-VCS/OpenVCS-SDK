@@ -7,7 +7,7 @@
 //! into distributable `.ovcsp` archives. It handles:
 //!
 //! - Parsing plugin manifests (`openvcs.plugin.json`)
-//! - Building WASM modules for the `wasm32-wasip1` target
+//! - Validating Node module entrypoints under `bin/`
 //! - Validating and copying plugin assets (icons, themes)
 //! - Creating tar.xz archives suitable for distribution
 //!
@@ -50,7 +50,7 @@ pub struct PluginBuildArgs {
     ///
     /// This directory must contain:
     /// - `openvcs.plugin.json` (plugin manifest)
-    /// - `src/lib.rs` (for WASM plugins)
+    /// - `bin/<module.exec>` (for runtime plugins)
     /// - Optional: `themes/` directory, icon files
     pub plugin_dir: PathBuf,
 

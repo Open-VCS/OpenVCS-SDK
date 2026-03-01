@@ -15,7 +15,7 @@ It is a build/distribution utility crate, not a runtime plugin host.
 - `src/bin/cargo-openvcs.rs`: Cargo subcommand entry (`cargo openvcs ...`).
 - `src/lib.rs`: library exports.
 - `src/dist/mod.rs`: bundle assembly entrypoint plus dist-oriented modules (`args`, `manifest`, `fsops`, `bundle`).
-- `src/build/mod.rs`: build pipeline entrypoint plus build-oriented modules (`compile`, `wasm`, `metadata`, `util`).
+- `src/build/mod.rs`: shared file/build helpers (`util`).
 
 ## Public Interfaces
 
@@ -35,7 +35,7 @@ Primary concern:
 
 - SDK should remain focused on packaging workflows.
 - Output artifacts must match structure expected by host bundle installer.
-- Plugins are packaged as `.ovcsp` bundles containing `openvcs.plugin.json`, optional `themes/`, and optional component `.wasm` under `bin/`.
+- Plugins are packaged as `.ovcsp` bundles containing `openvcs.plugin.json`, optional `themes/`, and optional Node runtime entry files (`.js/.mjs/.cjs`) under `bin/`.
 
 ## Cross-Cutting Concerns
 

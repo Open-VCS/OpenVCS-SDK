@@ -17,14 +17,14 @@ use std::path::Path;
 /// ```json
 /// {
 ///   "module": {
-///     "exec": "path/to/exec.wasm"
+///     "exec": "bin/plugin.mjs"
 ///   }
 /// }
 /// ```
 #[derive(Debug, Deserialize)]
 struct PluginManifestModule {
-    /// Path to the WASM executable (relative to plugin root).
-    /// Must end with `.wasm`.
+    /// Path to the Node executable entrypoint (relative to plugin root).
+    /// Must end with `.js`, `.mjs`, or `.cjs`.
     #[serde(default)]
     exec: Option<String>,
 }
@@ -36,7 +36,7 @@ struct PluginManifestModule {
 /// {
 ///   "id": "com.example.my-plugin",
 ///   "module": {
-///     "exec": "plugin.wasm"
+///     "exec": "plugin.mjs"
 ///   }
 /// }
 /// ```

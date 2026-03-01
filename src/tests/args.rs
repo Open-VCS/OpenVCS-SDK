@@ -1,23 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::build::wasm::platform_exec_filename;
 use crate::dist::args::parse_args;
 use std::env;
 use std::ffi::OsString;
 use std::path::PathBuf;
-
-#[test]
-fn platform_exec_filename_leaves_wasm_unchanged() {
-    assert_eq!(platform_exec_filename("plugin.wasm"), "plugin.wasm");
-}
-
-#[test]
-fn platform_exec_filename_trims_whitespace_and_handles_empty() {
-    assert_eq!(platform_exec_filename("  plugin.wasm  "), "plugin.wasm");
-    assert_eq!(platform_exec_filename("   "), "");
-    assert_eq!(platform_exec_filename(""), "");
-}
 
 #[test]
 fn parse_args_requires_flags() {

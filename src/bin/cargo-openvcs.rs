@@ -17,14 +17,14 @@
 //! - `--plugin-dir <path>` - Bundle a specific plugin directory
 //! - `--out <path>` - Output directory (default: `./dist`)
 //! - `--all` - Bundle all plugins found in subdirectories
-//! - `--fix` - Run `cargo fix` before bundling (Rust plugins only)
+//! - `--fix` - Run `cargo fix` before bundling (optional for Rust-based tooling)
 //!
 //! # Exit Codes
 //!
 //! - `0` - Success
 //! - `1` - Error
 
-use openvcs_sdk::dist::{PluginBuildArgs, bundle_plugin};
+use openvcs_sdk::dist::{bundle_plugin, PluginBuildArgs};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -98,8 +98,7 @@ fn discover_plugin_dirs(root: &Path) -> Result<Vec<PathBuf>, String> {
 
 /// Runs `cargo fix` in the specified plugin directory.
 ///
-/// Attempts to fix the plugin code before bundling. First tries
-/// `wasm32-wasip1` target, then falls back to host target if unavailable.
+/// Attempts to fix Rust code before bundling.
 ///
 /// # Arguments
 ///
@@ -115,22 +114,7 @@ fn run_cargo_fix(dir: &Path) -> Result<(), String> {
     cmd.arg("--allow-dirty");
     cmd.arg("--allow-staged");
 
-    // Prefer fixing in the wasm32-wasip1 configuration (plugins are compiled to WASI).
-    // If the target isn't available, fall back to a host-target fix.
     let status = cmd
-        .arg("--target")
-        .arg("wasm32-wasip1")
-        .status()
-        .map_err(|e| format!("failed to spawn cargo fix: {e}"))?;
-    if status.success() {
-        return Ok(());
-    }
-
-    let status = std::process::Command::new("cargo")
-        .current_dir(dir)
-        .arg("fix")
-        .arg("--allow-dirty")
-        .arg("--allow-staged")
         .status()
         .map_err(|e| format!("failed to spawn cargo fix: {e}"))?;
     if status.success() {

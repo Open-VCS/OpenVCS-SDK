@@ -1,11 +1,9 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::build::resolve_target_dir;
-use crate::build::{build_plugin_wasi, ensure_wasm_magic};
-use crate::dist::PluginBuildArgs;
 use crate::dist::fsops::{copy_dir_recursive, copy_icon, unique_staging_dir, write_tar_xz};
 use crate::dist::manifest::manifest_defaults;
+use crate::dist::PluginBuildArgs;
 use std::fs;
 use std::path::PathBuf;
 
@@ -14,8 +12,7 @@ use std::path::PathBuf;
 /// This function performs the complete bundling workflow:
 ///
 /// 1. **Parse manifest** - Reads `openvcs.plugin.json` to get plugin ID and exec path
-/// 2. **Build WASM** - Compiles `src/lib.rs` to `wasm32-wasip1` (if module.exec is set)
-/// 3. **Validate** - Ensures the built WASM is a valid component module
+/// 2. **Validate module entry** - Ensures `bin/<module.exec>` exists for Node plugins
 /// 4. **Copy assets** - Copies icon (if present) and themes directory (if present)
 /// 5. **Create archive** - Packages everything into a tar.xz archive
 ///
@@ -32,8 +29,7 @@ use std::path::PathBuf;
 /// Returns an error if:
 /// - The manifest is missing or has no `id` field
 /// - The manifest has no `module.exec` and no `themes/` directory
-/// - WASM build fails
-/// - The built WASM is not a valid component
+/// - Declared module entrypoint is missing
 /// - Asset copying fails
 /// - Archive creation fails
 ///
@@ -63,9 +59,9 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
         eprintln!("Plugin ID: {}", plugin_id);
     }
 
-    let has_wasm = module_exec.is_some();
+    let has_module = module_exec.is_some();
     let has_ui_or_assets = args.plugin_dir.join("themes").is_dir();
-    if !has_wasm && !has_ui_or_assets {
+    if !has_module && !has_ui_or_assets {
         return Err("manifest has no module.exec or themes/".to_string());
     }
 
@@ -109,43 +105,36 @@ pub fn bundle_plugin(args: &PluginBuildArgs) -> Result<PathBuf, String> {
         copy_dir_recursive(&themes_src, &bundle_dir.join("themes"))?;
     }
 
-    let target_dir = resolve_target_dir(&args.plugin_dir);
-
     for exec in [module_exec].into_iter().flatten() {
         let exec = exec.trim().to_string();
         if exec.is_empty() {
             continue;
         }
 
-        if !exec.ends_with(".wasm") {
+        let lower = exec.to_ascii_lowercase();
+        let supported =
+            lower.ends_with(".js") || lower.ends_with(".mjs") || lower.ends_with(".cjs");
+        if !supported {
             return Err(format!(
-                "manifest exec must end with .wasm (OpenVCS is WASM-only): {exec}"
+                "manifest exec must end with .js/.mjs/.cjs (Node runtime): {exec}"
             ));
         }
 
-        let _bin = exec
-            .strip_suffix(".wasm")
-            .ok_or_else(|| format!("invalid wasm exec: {exec}"))?;
-
-        if verbose {
-            eprintln!("Building WASM module: {}", exec);
-        }
-        let bin_src = build_plugin_wasi(&args.plugin_dir, &target_dir, "libplugin", verbose)?;
+        let bin_src = args.plugin_dir.join("bin").join(&exec);
         if !bin_src.is_file() {
             return Err(format!(
-                "built wasm not found at {} (did cargo build succeed?)",
+                "module entrypoint not found at {}",
                 bin_src.display()
             ));
         }
-        ensure_wasm_magic(&bin_src)?;
         let bin_dst = bin_dir.join(&exec);
 
         if verbose {
-            eprintln!("Copying WASM to bundle: {}", bin_dst.display());
+            eprintln!("Copying module entry to bundle: {}", bin_dst.display());
         }
         fs::copy(&bin_src, &bin_dst).map_err(|e| {
             format!(
-                "failed to copy wasm {} -> {}: {e}",
+                "failed to copy module {} -> {}: {e}",
                 bin_src.display(),
                 bin_dst.display()
             )

@@ -21,18 +21,14 @@ Bundle a plugin into a single `.ovcsp` tar.xz:
 cargo openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 ```
 
-Plugins must be Rust libraries with `src/lib.rs` using the `#[openvcs_plugin]` macro and
-`export_plugin!` macro to define the plugin ABI.
+Plugins are Node.js runtime modules (typically authored in TypeScript) and/or
+theme packs.
 
-Plugin manifests must use `module.exec` (WASM) and/or `themes/`.
+Plugin manifests must use `module.exec` (`.js`, `.mjs`, or `.cjs`) and/or
+`themes/`.
 
-The SDK also supports rebuilding component metadata for modules with stale
-`component-type:*:encoded world` sections by preserving wit-bindgen
-`imports and exports` metadata and retrying encoding against OpenVCS worlds.
-
-When a plugin lives inside a Cargo workspace, the SDK resolves the output wasm
-name using the plugin directory's own `Cargo.toml` manifest path (not the first
-workspace package), preventing cross-member bundle mixups.
+When `module.exec` is set, the entry file must exist at
+`bin/<module.exec>` before running `cargo openvcs dist`.
 
 ## Development
 - Required: `cargo fmt --all`
