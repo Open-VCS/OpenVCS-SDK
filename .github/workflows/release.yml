@@ -153,6 +153,9 @@ jobs:
     name: Publish @openvcs/sdk to npm
     runs-on: ubuntu-24.04
     needs: build-and-upload-binaries
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -169,12 +172,4 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish npm package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "ERROR: NPM_TOKEN secret is not set" >&2
-            exit 1
-          fi
-          npm publish --access public
+        run: npm publish --provenance --access public

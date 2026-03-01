@@ -54,6 +54,13 @@ The native implementation (Rust crate and binaries) lives in `native/`.
 
 See `native/README.md` for Rust-focused development and crates.io publishing.
 
+## Releases
+
+Stable releases are published from `.github/workflows/release.yml`.
+
+- crates.io publishes use `CARGO_REGISTRY_TOKEN`.
+- npm publishes use npm Trusted Publishing (OIDC), so no `NPM_TOKEN` is required.
+
 ## License
 
 Copyright © 2025-2026 OpenVCS Contributors. SPDX-License-Identifier: GPL-3.0-or-later
