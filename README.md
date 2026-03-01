@@ -23,6 +23,8 @@ Interactive module plugin scaffold:
 npx @openvcs/sdk init my-plugin
 ```
 
+The generated module template includes TypeScript and Node typings (`@types/node`).
+
 Interactive theme plugin scaffold:
 
 ```bash

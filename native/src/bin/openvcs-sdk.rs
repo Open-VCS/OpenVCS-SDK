@@ -351,6 +351,7 @@ fn module_package_json(answers: &InitAnswers) -> Result<String, String> {
         },
         "devDependencies": {
             "@openvcs/sdk": format!("^{}", env!("CARGO_PKG_VERSION")),
+            "@types/node": "^22.0.0",
             "typescript": "^5.8.2"
         }
     });
@@ -380,7 +381,7 @@ fn theme_package_json(answers: &InitAnswers) -> Result<String, String> {
 
 /// Returns a TypeScript configuration for module plugin templates.
 fn module_tsconfig_json() -> &'static str {
-    "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"NodeNext\",\n    \"moduleResolution\": \"NodeNext\",\n    \"strict\": true,\n    \"skipLibCheck\": true,\n    \"outDir\": \"bin\",\n    \"rootDir\": \"src\"\n  },\n  \"include\": [\"src/**/*.ts\"]\n}\n"
+    "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"NodeNext\",\n    \"moduleResolution\": \"NodeNext\",\n    \"types\": [\"node\"],\n    \"strict\": true,\n    \"skipLibCheck\": true,\n    \"outDir\": \"bin\",\n    \"rootDir\": \"src\"\n  },\n  \"include\": [\"src/**/*.ts\"]\n}\n"
 }
 
 /// Returns the default TypeScript module plugin runtime implementation.
