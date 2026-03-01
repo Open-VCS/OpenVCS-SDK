@@ -38,6 +38,7 @@ fn parse_args_parses_plugin_dir_and_out_dir() {
     let parsed = parse_args(args).unwrap();
     assert_eq!(parsed.plugin_dir, PathBuf::from("some/plugin"));
     assert_eq!(parsed.out_dir, PathBuf::from("some/out"));
+    assert!(!parsed.no_npm_deps);
 }
 
 #[test]
@@ -48,6 +49,7 @@ fn parse_args_defaults_out_dir_to_dist() {
     ];
     let parsed = parse_args(args).unwrap();
     assert_eq!(parsed.out_dir, PathBuf::from("dist"));
+    assert!(!parsed.no_npm_deps);
 }
 
 #[test]
@@ -55,6 +57,13 @@ fn parse_args_defaults_plugin_dir_to_current_dir() {
     let parsed = parse_args(vec![]).unwrap();
     assert_eq!(parsed.out_dir, PathBuf::from("dist"));
     assert_eq!(parsed.plugin_dir, env::current_dir().unwrap());
+    assert!(!parsed.no_npm_deps);
+}
+
+#[test]
+fn parse_args_supports_no_npm_deps_flag() {
+    let parsed = parse_args(vec![OsString::from("--no-npm-deps")]).unwrap();
+    assert!(parsed.no_npm_deps);
 }
 
 #[test]

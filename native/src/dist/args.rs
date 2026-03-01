@@ -15,6 +15,7 @@ pub(crate) fn usage() -> &'static str {
 \n\
   --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n\
   --out <path>          Output directory (default: ./dist)\n\
+  --no-npm-deps         Disable npm dependency bundling (enabled by default)\n\
   -V, --verbose         Enable verbose output\n\
 \n\
 Builds plugin executables and packages them into a single `.ovcsp` tar.xz.\n"
@@ -37,6 +38,7 @@ fn take_value(args: &mut Vec<OsString>, flag: &str) -> Result<String, String> {
 ///
 /// * `--plugin-dir <path>` - Path to the plugin root directory
 /// * `--out <path>` - Output directory (default: `./dist`)
+/// * `--no-npm-deps` - Disable npm lockfile/dependency bundling
 /// * `-V, --verbose` - Enable verbose output
 /// * `--help` - Display usage information
 ///
@@ -53,6 +55,7 @@ pub fn parse_args(mut args: Vec<OsString>) -> Result<PluginBuildArgs, String> {
     let mut plugin_dir: Option<PathBuf> = None;
     let mut out_dir = PathBuf::from("dist");
     let mut verbose = false;
+    let mut no_npm_deps = false;
 
     while let Some(arg) = args.first().cloned() {
         let s = arg.to_string_lossy();
@@ -65,6 +68,7 @@ pub fn parse_args(mut args: Vec<OsString>) -> Result<PluginBuildArgs, String> {
                 plugin_dir = Some(PathBuf::from(take_value(&mut args, "--plugin-dir")?))
             }
             "--out" => out_dir = PathBuf::from(take_value(&mut args, "--out")?),
+            "--no-npm-deps" => no_npm_deps = true,
             "-V" | "--verbose" => verbose = true,
             "--help" => return Err(usage().to_string()),
             other => return Err(format!("unknown flag: {other}")),
@@ -77,5 +81,6 @@ pub fn parse_args(mut args: Vec<OsString>) -> Result<PluginBuildArgs, String> {
         plugin_dir,
         out_dir,
         verbose,
+        no_npm_deps,
     })
 }

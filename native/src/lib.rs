@@ -9,7 +9,7 @@
 //! # Modules
 //!
 //! - [`dist`] - Plugin distribution and bundling (public API)
-//! - [`build`] - Internal build pipeline utilities
+//! - `build` - Internal build pipeline utilities
 //!
 //! # Example
 //!

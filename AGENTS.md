@@ -1,22 +1,26 @@
 # Repository Guidelines
 
 ## Project structure & module responsibilities
-- `src/bin/cargo-openvcs.rs` produces the `cargo-openvcs` subcommand used as `cargo openvcs ...`.
-- Packaging logic lives in `src/dist/` (CLI args, manifest parsing, bundle assembly) with shared file helpers in `src/build/`; `src/lib.rs` exports helpers consumed by the CLI and tests.
-- Build outputs go under `dist/` (generated archives) and `target/` (Cargo artifacts).
+- npm package entry is at repo root (`package.json`, `bin/`, `lib/`, `scripts/`, `vendor/`).
+- Native Rust implementation lives in `native/`.
+- `native/src/bin/cargo-openvcs.rs` produces the Cargo subcommand used as `cargo openvcs ...`.
+- `native/src/bin/openvcs-sdk.rs` provides the standalone SDK CLI used by npm consumers.
+- Packaging logic lives in `native/src/dist/` (CLI args, manifest parsing, bundle assembly) with shared file helpers in `native/src/build/`; `native/src/lib.rs` exports helpers consumed by the CLI and tests.
+- Build outputs go under plugin `dist/` folders and `native/target/` (Cargo artifacts).
 
 ## Architecture reference
-- Read `ARCHITECTURE.md` before changing structural or workflow components; the SDK is focused on plugin packaging, not runtime execution.
+- Read `native/ARCHITECTURE.md` before changing structural or workflow components; the SDK is focused on plugin packaging, not runtime execution.
 - Bundles follow the `.ovcsp` format (tar.xz with `openvcs.plugin.json` + `bin/` entries). Keep manifest fields consistent with host expectations documented in `Client/docs/plugin architecture.md`.
 
 ## Build, test, and tooling commands
-- `cargo build` (compile SDK binaries/library).
-- `cargo test` (unit tests in `src/tests/` and supporting helpers).
-- `cargo fmt --all`; keep formatting clean.
-- `cargo clippy --all-targets -- -D warnings`; CI enforces linting.
-- `just fix` runs `cargo fmt` + `cargo clippy --fix` for quick cleanup.
-- `cargo openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce a `.ovcsp` bundle for manual verification.
-- Install path for users is crates.io: `cargo install openvcs-sdk`.
+- `npm install` (install npm wrapper dependencies in plugin projects).
+- `cargo build --manifest-path native/Cargo.toml` (compile SDK binaries/library).
+- `cargo test --manifest-path native/Cargo.toml` (unit tests in `native/src/tests/` and supporting helpers).
+- `cargo fmt --manifest-path native/Cargo.toml --all`; keep formatting clean.
+- `cargo clippy --manifest-path native/Cargo.toml --all-targets -- -D warnings`; CI enforces linting.
+- `cargo doc --manifest-path native/Cargo.toml --no-deps` to verify docs build.
+- `cargo openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` or `openvcs-sdk dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce `.ovcsp` bundles.
+- Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
 
 ## Coding style & conventions
 - Follow default Rust formatting (`rustfmt`/`cargo fmt`). Use 4-space indentation in Rust sources, `snake_case` for functions/modules, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.
@@ -37,7 +41,7 @@
 - Run `cargo doc --no-deps` to verify documentation builds without warnings.
 
 ## Testing guidelines
-- Keep tests next to the logic they cover (e.g., `src/tests/`). Name tests descriptively (e.g., `bundles_plugin_manifest`).
+- Keep Rust tests next to the logic they cover (e.g., `native/src/tests/`). Name tests descriptively (e.g., `bundles_plugin_manifest`).
 - Before PRs, run the formatter/linter/test trio from above.
 
 ## Commit & PR guidelines

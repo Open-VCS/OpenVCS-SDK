@@ -9,7 +9,7 @@
 //! # Usage
 //!
 //! ```text
-//! cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--all] [--fix]
+//! cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--all] [--fix] [--no-npm-deps]
 //! ```
 //!
 //! # Options
@@ -18,13 +18,14 @@
 //! - `--out <path>` - Output directory (default: `./dist`)
 //! - `--all` - Bundle all plugins found in subdirectories
 //! - `--fix` - Run `cargo fix` before bundling (optional for Rust-based tooling)
+//! - `--no-npm-deps` - Skip npm lockfile generation and dependency bundling
 //!
 //! # Exit Codes
 //!
 //! - `0` - Success
 //! - `1` - Error
 
-use openvcs_sdk::dist::{bundle_plugin, PluginBuildArgs};
+use openvcs_sdk::dist::{PluginBuildArgs, bundle_plugin};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -34,7 +35,7 @@ use std::process::ExitCode;
 /// Prints usage information to stderr.
 fn print_usage() {
     eprintln!(
-        "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--fix] [-V] [--verbose]
+        "Usage: cargo openvcs dist [--plugin-dir <path>] [--out <path>] [--fix] [--no-npm-deps] [-V] [--verbose]
 
 Defaults:
 - If run inside a plugin folder (contains openvcs.plugin.json), bundles that plugin.
@@ -44,6 +45,7 @@ Default output directory: ./dist
 Options:
 - --all: bundle all plugins in the target directory
 - --fix: run `cargo fix` in Rust plugin directories before bundling
+- --no-npm-deps: skip npm dependency lock/install/bundling
 - -V, --verbose: enable verbose output
 
 Global Options:
@@ -146,6 +148,7 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
     let mut all = false;
     let mut fix = false;
     let mut verbose = false;
+    let mut no_npm_deps = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         let s = arg.to_string_lossy();
@@ -170,6 +173,9 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
             }
             "-V" | "--verbose" => {
                 verbose = true;
+            }
+            "--no-npm-deps" => {
+                no_npm_deps = true;
             }
             "--help" => {
                 print_usage();
@@ -218,6 +224,7 @@ fn run_dist_command(args: &[OsString]) -> Result<Vec<PathBuf>, String> {
             plugin_dir: dir,
             out_dir: out_dir.clone(),
             verbose,
+            no_npm_deps,
         };
         let path = bundle_plugin(&parsed)?;
         out_paths.push(path);

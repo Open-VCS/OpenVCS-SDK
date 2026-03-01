@@ -44,6 +44,7 @@ pub use bundle::bundle_plugin;
 /// * `plugin_dir` - Path to the plugin root directory (must contain `openvcs.plugin.json`)
 /// * `out_dir` - Directory where the `.ovcsp` bundle will be written (default: `./dist`)
 /// * `verbose` - Enable verbose output
+/// * `no_npm_deps` - Disable npm dependency bundling and lockfile generation
 #[derive(Debug)]
 pub struct PluginBuildArgs {
     /// Path to the plugin repository root.
@@ -64,6 +65,13 @@ pub struct PluginBuildArgs {
     /// When enabled, prints additional information about build steps,
     /// file operations, and progress.
     pub verbose: bool,
+
+    /// Disables npm dependency resolution/bundling.
+    ///
+    /// When `false` (default), `bundle_plugin` will detect `package.json`,
+    /// ensure `package-lock.json` exists, and install production dependencies
+    /// into the bundle staging directory.
+    pub no_npm_deps: bool,
 }
 
 // Reduce clippy type complexity warnings for manifest parsing results.

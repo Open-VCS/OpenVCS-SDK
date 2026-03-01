@@ -1,18 +1,17 @@
 # SDK Architecture
 
-This document describes the OpenVCS SDK tooling in `SDK/`.
-
-See umbrella context in `../ARCHITECTURE.md`.
+This document describes the OpenVCS SDK native tooling in `native/`.
 
 ## Bird's Eye View
 
-`SDK/` provides packaging tooling to build OpenVCS plugin bundles (`.ovcsp`).
+`native/` provides packaging tooling to build OpenVCS plugin bundles (`.ovcsp`).
 
 It is a build/distribution utility crate, not a runtime plugin host.
 
 ## Code Map
 
 - `src/bin/cargo-openvcs.rs`: Cargo subcommand entry (`cargo openvcs ...`).
+- `src/bin/openvcs-sdk.rs`: standalone CLI entry used by npm wrapper and direct execution.
 - `src/lib.rs`: library exports.
 - `src/dist/mod.rs`: bundle assembly entrypoint plus dist-oriented modules (`args`, `manifest`, `fsops`, `bundle`).
 - `src/build/mod.rs`: shared file/build helpers (`util`).
@@ -35,7 +34,9 @@ Primary concern:
 
 - SDK should remain focused on packaging workflows.
 - Output artifacts must match structure expected by host bundle installer.
-- Plugins are packaged as `.ovcsp` bundles containing `openvcs.plugin.json`, optional `themes/`, and optional Node runtime entry files (`.js/.mjs/.cjs`) under `bin/`.
+- Plugins are packaged as `.ovcsp` bundles containing `openvcs.plugin.json`, optional `themes/`, optional `bin/` runtime files, and optional preinstalled npm dependencies under `node_modules/`.
+- npm dependency bundling is enabled by default for plugins that include `package.json`; `--no-npm-deps` disables lockfile/dependency processing.
+- SDK enforces no-symlink bundle contents and rejects native Node addons (`*.node`) for portable output.
 
 ## Cross-Cutting Concerns
 

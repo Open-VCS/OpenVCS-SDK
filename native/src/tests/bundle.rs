@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::dist::fsops::{copy_dir_recursive, ICON_EXTENSIONS};
+use crate::dist::fsops::{ICON_EXTENSIONS, copy_dir_recursive};
 use crate::dist::manifest::parse_manifest_text;
 use std::collections::BTreeMap;
 use std::io::Cursor;
@@ -42,7 +42,7 @@ fn write_file(path: &Path, content: &[u8]) {
 struct VirtualPlugin {
     manifest_json: String,
     root_files: BTreeMap<String, Vec<u8>>,
-    module_execs: BTreeMap<String, Vec<u8>>,
+    bin_files: BTreeMap<String, Vec<u8>>,
 }
 
 impl VirtualPlugin {
@@ -50,7 +50,7 @@ impl VirtualPlugin {
         Self {
             manifest_json: manifest_json.into(),
             root_files: BTreeMap::new(),
-            module_execs: BTreeMap::new(),
+            bin_files: BTreeMap::new(),
         }
     }
 
@@ -60,7 +60,12 @@ impl VirtualPlugin {
     }
 
     fn add_module_exec(mut self, exec: &str, content: impl Into<Vec<u8>>) -> Self {
-        self.module_execs.insert(exec.to_string(), content.into());
+        self.bin_files.insert(exec.to_string(), content.into());
+        self
+    }
+
+    fn add_bin_file(mut self, path: &str, content: impl Into<Vec<u8>>) -> Self {
+        self.bin_files.insert(path.to_string(), content.into());
         self
     }
 }
@@ -119,10 +124,10 @@ fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8
             .map_err(|e| format!("tar append theme failed: {e}"))?;
     }
 
-    for exec in [module_exec].into_iter().flatten() {
+    if let Some(exec) = module_exec.as_deref() {
         let exec = exec.trim().to_string();
         if exec.is_empty() {
-            continue;
+            return Err("manifest module.exec is empty".to_string());
         }
 
         let lower = exec.to_ascii_lowercase();
@@ -135,7 +140,7 @@ fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8
         }
 
         let bytes = plugin
-            .module_execs
+            .bin_files
             .get(&exec)
             .ok_or_else(|| format!("module entrypoint not found at <memory>/bin/{exec}"))?;
 
@@ -148,6 +153,24 @@ fn virtual_bundle_tar_xz_bytes(plugin: &VirtualPlugin) -> Result<(String, Vec<u8
             bytes.as_slice(),
         )
         .map_err(|e| format!("tar append module failed: {e}"))?;
+    }
+
+    for (path, bytes) in &plugin.bin_files {
+        let Some(module_exec) = module_exec.as_deref() else {
+            continue;
+        };
+        if path == module_exec {
+            continue;
+        }
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_cksum();
+        tar.append_data(
+            &mut header,
+            format!("{plugin_id}/bin/{path}"),
+            bytes.as_slice(),
+        )
+        .map_err(|e| format!("tar append bin file failed: {e}"))?;
     }
 
     let encoder = tar
@@ -281,7 +304,7 @@ fn virtual_bundle_trims_exec_field() {
 }
 
 #[test]
-fn virtual_bundle_ignores_functions_field() {
+fn virtual_bundle_ignores_functions_field_for_module_selection_only() {
     let plugin = VirtualPlugin::new(
         r#"{ "id": "x", "module": { "exec": "module.mjs" }, "functions": { "exec": "func.mjs" } }"#,
     )
@@ -290,7 +313,7 @@ fn virtual_bundle_ignores_functions_field() {
     let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
     let entries = read_tar_xz_entries_bytes(&bundle_bytes);
     assert_eq!(entries.get("x/bin/module.mjs").unwrap(), b"export {};\n");
-    assert!(!entries.contains_key("x/bin/func.mjs"));
+    assert_eq!(entries.get("x/bin/func.mjs").unwrap(), b"export {};\n");
 }
 
 #[test]
@@ -304,4 +327,16 @@ fn virtual_bundle_prefers_icon_extension_order() {
     let entries = read_tar_xz_entries_bytes(&bundle_bytes);
     assert_eq!(entries.get("x/icon.png").unwrap(), b"png");
     assert!(!entries.contains_key("x/icon.jpg"));
+}
+
+#[test]
+fn virtual_bundle_includes_extra_bin_files() {
+    let plugin = VirtualPlugin::new(r#"{ "id": "x", "module": { "exec": "module.mjs" } }"#)
+        .add_module_exec("module.mjs", b"export {}\n")
+        .add_bin_file("helpers/util.mjs", b"export const x = 1\n");
+
+    let (_plugin_id, bundle_bytes) = virtual_bundle_tar_xz_bytes(&plugin).unwrap();
+    let entries = read_tar_xz_entries_bytes(&bundle_bytes);
+    assert!(entries.contains_key("x/bin/module.mjs"));
+    assert!(entries.contains_key("x/bin/helpers/util.mjs"));
 }
