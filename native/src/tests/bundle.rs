@@ -3,6 +3,7 @@
 
 use crate::dist::fsops::{ICON_EXTENSIONS, copy_dir_recursive};
 use crate::dist::manifest::parse_manifest_text;
+use crate::dist::{PluginBuildArgs, bundle_plugin};
 use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::io::Read;
@@ -339,4 +340,33 @@ fn virtual_bundle_includes_extra_bin_files() {
     let entries = read_tar_xz_entries_bytes(&bundle_bytes);
     assert!(entries.contains_key("x/bin/module.mjs"));
     assert!(entries.contains_key("x/bin/helpers/util.mjs"));
+}
+
+#[test]
+fn bundle_rejects_module_exec_path_traversal() {
+    let tmp = TempDir::new("bundle_exec_traversal");
+    let plugin_dir = tmp.path.join("plugin");
+    std::fs::create_dir_all(plugin_dir.join("bin")).unwrap();
+
+    write_file(
+        &plugin_dir.join("openvcs.plugin.json"),
+        br#"{ "id": "x", "module": { "exec": "../secret.js" } }"#,
+    );
+    write_file(&plugin_dir.join("secret.js"), b"console.log('secret')\n");
+
+    let out_dir = tmp.path.join("out");
+    std::fs::create_dir_all(&out_dir).unwrap();
+
+    let args = PluginBuildArgs {
+        plugin_dir,
+        out_dir,
+        verbose: false,
+        no_npm_deps: true,
+    };
+
+    let err = bundle_plugin(&args).unwrap_err();
+    assert!(
+        err.contains("module.exec") && err.contains("under bin"),
+        "unexpected error: {err}"
+    );
 }

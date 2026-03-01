@@ -280,11 +280,42 @@ fn validate_declared_module_exec(
         ));
     }
 
-    let bin_src = plugin_dir.join("bin").join(exec);
+    let exec_path = Path::new(exec);
+    if exec_path.is_absolute() {
+        return Err(format!(
+            "manifest module.exec must be a relative path under bin/: {exec}"
+        ));
+    }
+    if exec_path
+        .components()
+        .any(|c| matches!(c, std::path::Component::Prefix(_)))
+    {
+        return Err(format!(
+            "manifest module.exec must be a relative path under bin/: {exec}"
+        ));
+    }
+
+    let bin_dir = plugin_dir.join("bin");
+    let bin_dir_canon = fs::canonicalize(&bin_dir)
+        .map_err(|e| format!("failed to resolve bin directory {}: {e}", bin_dir.display()))?;
+
+    let bin_src = bin_dir.join(exec_path);
     if !bin_src.is_file() {
         return Err(format!(
             "module entrypoint not found at {}",
             bin_src.display()
+        ));
+    }
+
+    let bin_src_canon = fs::canonicalize(&bin_src).map_err(|e| {
+        format!(
+            "failed to resolve module entrypoint {}: {e}",
+            bin_src.display()
+        )
+    })?;
+    if !bin_src_canon.starts_with(&bin_dir_canon) {
+        return Err(format!(
+            "manifest module.exec must point to a file under bin/: {exec}"
         ));
     }
 
