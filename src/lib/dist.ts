@@ -30,8 +30,6 @@ interface ManifestInfo {
 interface CommandResult {
   status: number | null;
   error?: Error;
-  stdout?: string | null;
-  stderr?: string | null;
 }
 
 function npmExecutable(): string {
@@ -177,28 +175,17 @@ function runCommand(program: string, args: string[], cwd: string, verbose: boole
 
   const result = spawnSync(program, args, {
     cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", verbose ? "inherit" : "ignore", "inherit"],
   }) as CommandResult;
 
   if (result.error) {
     throw new Error(`failed to spawn '${program}' in ${cwd}: ${result.error.message}`);
   }
   if (result.status === 0) {
-    if (verbose) {
-      if (result.stdout?.trim()) {
-        process.stderr.write(`${result.stdout.trim()}\n`);
-      }
-      if (result.stderr?.trim()) {
-        process.stderr.write(`${result.stderr.trim()}\n`);
-      }
-    }
     return;
   }
 
-  throw new Error(
-    `command failed (${program} ${args.join(" ")}), exit code ${result.status}, stdout='${(result.stdout || "").trim()}', stderr='${(result.stderr || "").trim()}'`
-  );
+  throw new Error(`command failed (${program} ${args.join(" ")}), exit code ${result.status}`);
 }
 
 function ensurePackageLock(pluginDir: string, verbose: boolean): void {

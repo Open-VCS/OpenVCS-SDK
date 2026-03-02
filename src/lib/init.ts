@@ -347,3 +347,9 @@ export function isUsageError(error: unknown): error is InitCommandError {
     typeof (error as InitCommandError).code === "string"
   );
 }
+
+export const __private = {
+  defaultPluginIdFromDir,
+  sanitizeIdToken,
+  validatePluginId,
+};
