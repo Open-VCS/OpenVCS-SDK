@@ -92,13 +92,29 @@ export function parseDistArgs(args: string[]): DistArgs {
 
 function readManifest(pluginDir: string): ManifestInfo {
   const manifestPath = path.join(pluginDir, "openvcs.plugin.json");
-  if (!fs.existsSync(manifestPath) || !fs.statSync(manifestPath).isFile()) {
-    throw new Error(`missing openvcs.plugin.json at ${manifestPath}`);
-  }
-
+  let manifestRaw: string;
+  let manifestFd: number | undefined;
   let manifest: unknown;
   try {
-    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    manifestFd = fs.openSync(manifestPath, "r");
+    const manifestStat = fs.fstatSync(manifestFd);
+    if (!manifestStat.isFile()) {
+      throw new Error(`missing openvcs.plugin.json at ${manifestPath}`);
+    }
+    manifestRaw = fs.readFileSync(manifestFd, "utf8");
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`missing openvcs.plugin.json at ${manifestPath}`);
+    }
+    throw error;
+  } finally {
+    if (typeof manifestFd === "number") {
+      fs.closeSync(manifestFd);
+    }
+  }
+
+  try {
+    manifest = JSON.parse(manifestRaw);
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`parse ${manifestPath}: ${detail}`);
