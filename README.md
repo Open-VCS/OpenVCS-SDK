@@ -57,6 +57,8 @@ openvcs init my-plugin
 ```
 
 The generated module template includes TypeScript and Node typings (`@types/node`).
+Plugin IDs entered during scaffold must not be `.`/`..` and must not contain path
+separators (`/` or `\\`).
 
 Interactive theme plugin scaffold:
 

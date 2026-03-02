@@ -85,3 +85,18 @@ test("openvcs dist reports argument errors", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /missing value for --plugin-dir/);
 });
+
+test("openvcs init re-prompts invalid plugin id", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  const input = "\nmodule\nbad/id\ngood-id\n\n\n\nn\n";
+  const result = runCli(["init", pluginDir], root, input);
+
+  assert.equal(result.status, 0);
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(pluginDir, "openvcs.plugin.json"), "utf8"));
+  assert.equal(manifest.id, "good-id");
+
+  cleanupTempDir(root);
+});

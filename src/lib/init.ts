@@ -68,6 +68,19 @@ function defaultPluginNameFromId(pluginId: string): string {
   return words.length > 0 ? words.join(" ") : "OpenVCS Plugin";
 }
 
+function validatePluginId(pluginId: string): string | undefined {
+  if (!pluginId) {
+    return "Plugin id is required.";
+  }
+  if (pluginId === "." || pluginId === "..") {
+    return "Plugin id must not be '.' or '..'.";
+  }
+  if (pluginId.includes("/") || pluginId.includes("\\")) {
+    return "Plugin id must not contain path separators (/ or \\).";
+  }
+  return undefined;
+}
+
 async function promptText(
   rl: readline.Interface,
   label: string,
@@ -144,9 +157,15 @@ async function collectAnswers({ forceTheme, targetHint }: CollectAnswersOptions)
     }
 
     const defaultId = defaultPluginIdFromDir(targetDir);
-    let pluginId = "";
+    let pluginId: string | undefined;
     while (!pluginId) {
-      pluginId = (await promptText(rl, "Plugin id", defaultId)).trim();
+      const candidateId = (await promptText(rl, "Plugin id", defaultId)).trim();
+      const validationError = validatePluginId(candidateId);
+      if (!validationError) {
+        pluginId = candidateId;
+        break;
+      }
+      process.stderr.write(`${validationError}\n`);
     }
 
     const defaultName = defaultPluginNameFromId(pluginId);
