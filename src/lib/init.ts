@@ -23,6 +23,12 @@ interface CollectAnswersOptions {
   targetHint?: string;
 }
 
+interface PromptDriver {
+  promptText(label: string, defaultValue?: string): Promise<string>;
+  promptBoolean(label: string, defaultValue: boolean): Promise<boolean>;
+  close(): void;
+}
+
 interface InitCommandError {
   code?: string;
 }
@@ -81,37 +87,36 @@ function validatePluginId(pluginId: string): string | undefined {
   return undefined;
 }
 
-async function promptText(
-  rl: readline.Interface,
-  label: string,
-  defaultValue = ""
-): Promise<string> {
-  const suffix = defaultValue ? ` [${defaultValue}]` : "";
-  const answer = await rl.question(`${label}${suffix}: `);
-  const trimmed = answer.trim();
-  return trimmed || defaultValue;
-}
-
-async function promptBoolean(
-  rl: readline.Interface,
-  label: string,
-  defaultValue: boolean
-): Promise<boolean> {
-  const suffix = defaultValue ? "Y/n" : "y/N";
-  while (true) {
-    const answer = await rl.question(`${label} (${suffix}): `);
-    const normalized = answer.trim().toLowerCase();
-    if (!normalized) {
-      return defaultValue;
-    }
-    if (normalized === "y" || normalized === "yes") {
-      return true;
-    }
-    if (normalized === "n" || normalized === "no") {
-      return false;
-    }
-    process.stderr.write("Please answer yes or no.\n");
-  }
+function createReadlinePromptDriver(output: NodeJS.WritableStream = process.stderr): PromptDriver {
+  const rl = readline.createInterface({ input: stdin, output: stdout });
+  return {
+    async promptText(label: string, defaultValue = ""): Promise<string> {
+      const suffix = defaultValue ? ` [${defaultValue}]` : "";
+      const answer = await rl.question(`${label}${suffix}: `);
+      const trimmed = answer.trim();
+      return trimmed || defaultValue;
+    },
+    async promptBoolean(label: string, defaultValue: boolean): Promise<boolean> {
+      const suffix = defaultValue ? "Y/n" : "y/N";
+      while (true) {
+        const answer = await rl.question(`${label} (${suffix}): `);
+        const normalized = answer.trim().toLowerCase();
+        if (!normalized) {
+          return defaultValue;
+        }
+        if (normalized === "y" || normalized === "yes") {
+          return true;
+        }
+        if (normalized === "n" || normalized === "no") {
+          return false;
+        }
+        output.write("Please answer yes or no.\n");
+      }
+    },
+    close(): void {
+      rl.close();
+    },
+  };
 }
 
 function writeJson(filePath: string, value: unknown): void {
@@ -129,11 +134,14 @@ function directoryHasEntries(targetDir: string): boolean {
   return entries.length > 0;
 }
 
-async function collectAnswers({ forceTheme, targetHint }: CollectAnswersOptions): Promise<InitAnswers> {
+async function collectAnswers(
+  { forceTheme, targetHint }: CollectAnswersOptions,
+  promptDriver: PromptDriver = createReadlinePromptDriver(),
+  output: NodeJS.WritableStream = process.stderr
+): Promise<InitAnswers> {
   const defaultTarget = targetHint || path.join(process.cwd(), "openvcs-plugin");
-  const rl = readline.createInterface({ input: stdin, output: stdout });
   try {
-    const targetText = await promptText(rl, "Target directory", defaultTarget);
+    const targetText = await promptDriver.promptText("Target directory", defaultTarget);
     const targetDir = path.resolve(targetText);
 
     let kind: "module" | "theme" = "module";
@@ -141,7 +149,7 @@ async function collectAnswers({ forceTheme, targetHint }: CollectAnswersOptions)
       kind = "theme";
     } else {
       while (true) {
-        const value = (await promptText(rl, "Template type (module/theme)", "module"))
+        const value = (await promptDriver.promptText("Template type (module/theme)", "module"))
           .trim()
           .toLowerCase();
         if (value === "module" || value === "m") {
@@ -152,35 +160,35 @@ async function collectAnswers({ forceTheme, targetHint }: CollectAnswersOptions)
           kind = "theme";
           break;
         }
-        process.stderr.write("Please choose 'module' or 'theme'.\n");
+        output.write("Please choose 'module' or 'theme'.\n");
       }
     }
 
     const defaultId = defaultPluginIdFromDir(targetDir);
     let pluginId: string | undefined;
     while (!pluginId) {
-      const candidateId = (await promptText(rl, "Plugin id", defaultId)).trim();
+      const candidateId = (await promptDriver.promptText("Plugin id", defaultId)).trim();
       const validationError = validatePluginId(candidateId);
       if (!validationError) {
         pluginId = candidateId;
         break;
       }
-      process.stderr.write(`${validationError}\n`);
+      output.write(`${validationError}\n`);
     }
 
     const defaultName = defaultPluginNameFromId(pluginId);
     let pluginName = "";
     while (!pluginName) {
-      pluginName = (await promptText(rl, "Plugin name", defaultName)).trim();
+      pluginName = (await promptDriver.promptText("Plugin name", defaultName)).trim();
     }
 
     let pluginVersion = "";
     while (!pluginVersion) {
-      pluginVersion = (await promptText(rl, "Version", "0.1.0")).trim();
+      pluginVersion = (await promptDriver.promptText("Version", "0.1.0")).trim();
     }
 
-    const defaultEnabled = await promptBoolean(rl, "Default enabled", true);
-    const runNpmInstall = await promptBoolean(rl, "Run npm install now", true);
+    const defaultEnabled = await promptDriver.promptBoolean("Default enabled", true);
+    const runNpmInstall = await promptDriver.promptBoolean("Run npm install now", true);
 
     return {
       targetDir,
@@ -192,7 +200,7 @@ async function collectAnswers({ forceTheme, targetHint }: CollectAnswersOptions)
       runNpmInstall,
     };
   } finally {
-    rl.close();
+    promptDriver.close();
   }
 }
 
@@ -311,10 +319,9 @@ export async function runInitCommand(args: string[]): Promise<string> {
   } else if (!fs.lstatSync(answers.targetDir).isDirectory()) {
     throw new Error(`target path exists but is not a directory: ${answers.targetDir}`);
   } else if (directoryHasEntries(answers.targetDir)) {
-    const rl = readline.createInterface({ input: stdin, output: stdout });
+    const promptDriver = createReadlinePromptDriver();
     try {
-      const proceed = await promptBoolean(
-        rl,
+      const proceed = await promptDriver.promptBoolean(
         `Directory ${answers.targetDir} is not empty. Continue and overwrite known files`,
         false
       );
@@ -322,7 +329,7 @@ export async function runInitCommand(args: string[]): Promise<string> {
         throw new Error("aborted by user");
       }
     } finally {
-      rl.close();
+      promptDriver.close();
     }
   }
 
@@ -349,6 +356,8 @@ export function isUsageError(error: unknown): error is InitCommandError {
 }
 
 export const __private = {
+  collectAnswers,
+  createReadlinePromptDriver,
   defaultPluginIdFromDir,
   sanitizeIdToken,
   validatePluginId,
