@@ -15,37 +15,27 @@ permissions:
   contents: read
 
 jobs:
-  rust-checks:
-    name: Rust checks and tests
+  node-checks:
+    name: Node checks and tests
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_CACHE_SIZE: '2G'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          toolchain: stable
-          components: rustfmt, clippy
+          node-version: 20
+          cache: npm
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      - name: Install dependencies
+        run: npm install
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+      - name: Run tests
+        run: npm test
 
-      - name: Cargo fmt (check)
-        run: cargo fmt --manifest-path native/Cargo.toml --all -- --check
-
-      - name: Cargo clippy
-        run: cargo clippy --manifest-path native/Cargo.toml --all-targets -- -D warnings
-
-      - name: Cargo test
-        run: cargo test --manifest-path native/Cargo.toml
+      - name: Verify package contents
+        run: npm pack --dry-run

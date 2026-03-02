@@ -1,48 +1,46 @@
 # Repository Guidelines
 
 ## Project structure & module responsibilities
-- npm package entry is at repo root (`package.json`, `bin/`, `lib/`, `scripts/`, `vendor/`).
-- Native Rust implementation lives in `native/`.
-- `native/src/bin/cargo-openvcs.rs` produces the Cargo subcommand used as `cargo openvcs ...`.
-- `native/src/bin/openvcs-sdk.rs` provides the standalone SDK CLI used by npm consumers.
-- Packaging logic lives in `native/src/dist/` (CLI args, manifest parsing, bundle assembly) with shared file helpers in `native/src/build/`; `native/src/lib.rs` exports helpers consumed by the CLI and tests.
-- Build outputs go under plugin `dist/` folders and `native/target/` (Cargo artifacts).
+- SDK source is authored in `src/` and compiled to runtime files in `bin/` and `lib/`.
+- npm package entry is at repo root (`package.json`, `src/`, `bin/`, `lib/`, `test/`).
+- `src/bin/openvcs.ts` compiles to the executable entrypoint installed by npm (`bin/openvcs.js`).
+- `src/lib/cli.ts` routes subcommands.
+- `src/lib/dist.ts` implements plugin packaging (`openvcs dist`).
+- `src/lib/init.ts` implements interactive plugin scaffolding (`openvcs init`).
+- `src/lib/fs-utils.ts` contains file-copy and path safety helpers.
+- Build outputs go under plugin `dist/` folders.
 
 ## Architecture reference
-- Read `native/ARCHITECTURE.md` before changing structural or workflow components; the SDK is focused on plugin packaging, not runtime execution.
-- Bundles follow the `.ovcsp` format (tar.xz with `openvcs.plugin.json` + `bin/` entries). Keep manifest fields consistent with host expectations documented in `Client/docs/plugin architecture.md`.
+- SDK is focused on plugin packaging, not runtime execution.
+- Bundles follow the `.ovcsp` format as gzip-compressed tar (`tar.gz`) containing `openvcs.plugin.json` plus plugin assets (`bin/`, `themes/`, optional `node_modules/`).
+- Keep manifest fields and bundle structure consistent with host expectations.
 
 ## Build, test, and tooling commands
-- `npm install` (install npm wrapper dependencies in plugin projects).
-- `cargo build --manifest-path native/Cargo.toml` (compile SDK binaries/library).
-- `cargo test --manifest-path native/Cargo.toml` (unit tests in `native/src/tests/` and supporting helpers).
-- `cargo fmt --manifest-path native/Cargo.toml --all`; keep formatting clean.
-- `cargo clippy --manifest-path native/Cargo.toml --all-targets -- -D warnings`; CI enforces linting.
-- `cargo doc --manifest-path native/Cargo.toml --no-deps` to verify docs build.
-- `cargo openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` or `openvcs-sdk dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce `.ovcsp` bundles.
+- `npm install` (install SDK dependencies).
+- `npm run build` (compile TypeScript sources to `bin/` and `lib/`).
+- `npm test` (compile then run Node tests via `node --test`).
+- `npm run openvcs -- <args>` (run the local CLI with a prebuild step).
+- `openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce `.ovcsp` bundles.
+- `openvcs init [--theme] [dir]` to scaffold plugin projects.
 - Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
 
 ## Coding style & conventions
-- Follow default Rust formatting (`rustfmt`/`cargo fmt`). Use 4-space indentation in Rust sources, `snake_case` for functions/modules, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.
+- Author code in TypeScript (`src/**/*.ts`) targeting Node 18+.
+- Compiled outputs in `bin/` and `lib/` are generated artifacts; do not edit them manually.
+- Prefer small, focused modules in `src/lib/` and keep files under 1000 lines.
+- Use clear error messages that include the relevant path/flag/context.
+- Keep path validation strict for security-sensitive code paths.
 - API surfaces should return rich error messages explaining path, capability, or validation issues.
 
 ## Documentation & licensing
 
 - When you change behavior, workflows, CLI flags, bundle layout, or manifest expectations, ALWAYS update the relevant documentation in the same change, even if the user does not explicitly ask.
-- All functions must include documentation comments.
 - All code files MUST be no more than 1000 lines; split files before they exceed this limit.
-- All new Rust source files must include a license header:
-  ```rust
-  // Copyright © 2025-2026 OpenVCS Contributors
-  // SPDX-License-Identifier: GPL-3.0-or-later
-  ```
-- All public API items (functions, structs, enums, traits, modules) must have doc comments (`///`).
-- Add module-level docs (`//!`) to new modules explaining their purpose.
-- Run `cargo doc --no-deps` to verify documentation builds without warnings.
 
 ## Testing guidelines
-- Keep Rust tests next to the logic they cover (e.g., `native/src/tests/`). Name tests descriptively (e.g., `bundles_plugin_manifest`).
-- Before PRs, run the formatter/linter/test trio from above.
+- Keep Node tests in `test/` near the feature area they validate.
+- Name tests descriptively and cover bundle safety checks (symlinks, path traversal, native addons).
+- Before PRs, run `npm test`.
 
 ## Commit & PR guidelines
 - Use short, imperative commit messages (<=72 chars) such as `sdk: validate manifest fields`.

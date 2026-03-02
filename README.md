@@ -7,7 +7,7 @@
 OpenVCS SDK for npm-based plugin development.
 
 Install this package in plugin projects, scaffold a starter plugin, and package
-plugins into `.ovcsp` bundles with `npm run build`.
+plugins into `.ovcsp` bundles.
 
 ## Install
 
@@ -15,20 +15,55 @@ plugins into `.ovcsp` bundles with `npm run build`.
 npm install --save-dev @openvcs/sdk
 ```
 
+This package installs a local CLI command named `openvcs`.
+
+One-off usage without adding to a project:
+
+```bash
+npx --package @openvcs/sdk openvcs --help
+```
+
+## SDK development
+
+This repository is authored in TypeScript under `src/` and compiles runtime files
+to `bin/` and `lib/`.
+
+Build the SDK:
+
+```bash
+npm run build
+```
+
+Run tests (builds first):
+
+```bash
+npm test
+```
+
+Run the local CLI through npm scripts:
+
+```bash
+npm run openvcs -- --help
+npm run openvcs -- init --help
+npm run openvcs -- dist --help
+```
+
 ## Scaffold a plugin
 
 Interactive module plugin scaffold:
 
 ```bash
-npx @openvcs/sdk init my-plugin
+openvcs init my-plugin
 ```
 
 The generated module template includes TypeScript and Node typings (`@types/node`).
+Plugin IDs entered during scaffold must not be `.`/`..` and must not contain path
+separators (`/` or `\\`).
 
 Interactive theme plugin scaffold:
 
 ```bash
-npx @openvcs/sdk init --theme my-theme
+openvcs init --theme my-theme
 ```
 
 ## Build a `.ovcsp` bundle
@@ -41,6 +76,9 @@ npm run build
 
 This produces `dist/<plugin-id>.ovcsp`.
 
+`.ovcsp` is a gzip-compressed tar archive (`tar.gz`) that contains a top-level
+`<plugin-id>/` directory with `openvcs.plugin.json` and plugin runtime assets.
+
 Dependency behavior while packaging:
 
 - npm dependency bundling is enabled by default when `package.json` exists.
@@ -50,18 +88,28 @@ Dependency behavior while packaging:
 - Disable npm dependency processing with `--no-npm-deps`.
 - Native Node addons (`*.node`) are rejected for portable bundles.
 
-## Native implementation
+## CLI usage
 
-The native implementation (Rust crate and binaries) lives in `native/`.
+Package a plugin manually:
 
-See `native/README.md` for Rust-focused development and crates.io publishing.
+```bash
+openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
+```
+
+Show command help:
+
+```bash
+openvcs --help
+openvcs dist --help
+openvcs init --help
+```
 
 ## Releases
 
 Stable releases are published from `.github/workflows/release.yml`.
 
-- crates.io publishes use `CARGO_REGISTRY_TOKEN`.
 - npm publishes use npm Trusted Publishing (OIDC), so no `NPM_TOKEN` is required.
+- `npm prepack` compiles TypeScript so published packages include `bin/` and `lib/` JS outputs.
 
 ## License
 
