@@ -6,6 +6,8 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'scripts/**'
       - 'src/**'
       - 'test/**'
       - '.github/workflows/ci.yml'
@@ -14,6 +16,8 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'scripts/**'
       - 'src/**'
       - 'test/**'
       - '.github/workflows/ci.yml'
