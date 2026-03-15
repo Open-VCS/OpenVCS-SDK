@@ -26,11 +26,13 @@ test("parseDistArgs parses known flags", () => {
     "some/plugin",
     "--out",
     "some/out",
+    "--no-build",
     "--no-npm-deps",
     "--verbose",
   ]);
   assert.equal(parsed.pluginDir, path.resolve("some/plugin"));
   assert.equal(parsed.outDir, path.resolve("some/out"));
+  assert.equal(parsed.noBuild, true);
   assert.equal(parsed.noNpmDeps, true);
   assert.equal(parsed.verbose, true);
 });
@@ -237,7 +239,13 @@ test("bundlePlugin writes a gzip .ovcsp for themes-only plugin", async () => {
   writeText(path.join(pluginDir, "themes", "default", "theme.json"), '{"name":"test"}\n');
   writeText(path.join(pluginDir, "icon.png"), "icon-bytes");
 
-  const outPath = await bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true });
+  const outPath = await bundlePlugin({
+    pluginDir,
+    outDir,
+    verbose: false,
+    noBuild: true,
+    noNpmDeps: true,
+  });
   const entries = await readBundleEntries(outPath);
 
   assert.equal(path.basename(outPath), "ui-only.ovcsp");
@@ -255,7 +263,7 @@ test("bundlePlugin rejects manifest with no module and no themes", async () => {
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), { id: "x" });
 
   await assert.rejects(
-    () => bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true }),
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
     /manifest has no module\.exec or themes\//
   );
 
@@ -274,11 +282,92 @@ test("bundlePlugin trims module.exec and includes extra bin files", async () => 
   writeText(path.join(pluginDir, "bin", "module.mjs"), "export {};\n");
   writeText(path.join(pluginDir, "bin", "helpers", "util.mjs"), "export const x = 1;\n");
 
-  const outPath = await bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true });
+  const outPath = await bundlePlugin({
+    pluginDir,
+    outDir,
+    verbose: false,
+    noBuild: true,
+    noNpmDeps: true,
+  });
   const entries = await readBundleEntries(outPath);
 
   assert.equal(entries.has("x/bin/module.mjs"), true);
   assert.equal(entries.has("x/bin/helpers/util.mjs"), true);
+  cleanupTempDir(root);
+});
+
+test("bundlePlugin builds code plugins before packaging", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  const outDir = path.join(root, "out");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "builder",
+    module: { exec: "plugin.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "builder",
+    private: true,
+    scripts: {
+      "build:plugin": "node ./scripts/build-plugin.js",
+    },
+  });
+  writeText(
+    path.join(pluginDir, "scripts", "build-plugin.js"),
+    "const fs = require('node:fs');\nconst path = require('node:path');\nconst out = path.join(process.cwd(), 'bin', 'plugin.js');\nfs.mkdirSync(path.dirname(out), { recursive: true });\nfs.writeFileSync(out, 'export {};\\n', 'utf8');\n"
+  );
+
+  const outPath = await bundlePlugin({
+    pluginDir,
+    outDir,
+    verbose: false,
+    noBuild: false,
+    noNpmDeps: true,
+  });
+  const entries = await readBundleEntries(outPath);
+
+  assert.equal(entries.has("builder/bin/plugin.js"), true);
+  cleanupTempDir(root);
+});
+
+test("bundlePlugin with no-build requires prebuilt module entrypoint", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  const outDir = path.join(root, "out");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "prebuilt",
+    module: { exec: "plugin.js" },
+  });
+
+  await assert.rejects(
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
+    /module entrypoint not found/
+  );
+
+  cleanupTempDir(root);
+});
+
+test("bundlePlugin errors when code plugin lacks build:plugin", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  const outDir = path.join(root, "out");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "missing-script",
+    module: { exec: "plugin.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "missing-script",
+    private: true,
+    scripts: {},
+  });
+
+  await assert.rejects(
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: false, noNpmDeps: true }),
+    /build:plugin/
+  );
+
   cleanupTempDir(root);
 });
 
@@ -294,7 +383,7 @@ test("bundlePlugin rejects module.exec path traversal", async () => {
   writeText(path.join(pluginDir, "secret.js"), "console.log('secret')\n");
 
   await assert.rejects(
-    () => bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true }),
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
     /module\.exec/
   );
 
@@ -313,7 +402,7 @@ test("bundlePlugin rejects non-node module.exec extension", async () => {
   writeText(path.join(pluginDir, "bin", "plugin.ts"), "export {};\n");
 
   await assert.rejects(
-    () => bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true }),
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
     /must end with .js\/.mjs\/.cjs/
   );
 
@@ -332,7 +421,7 @@ test("bundlePlugin rejects plugin id with path separators", async () => {
   writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
 
   await assert.rejects(
-    () => bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true }),
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
     /must not contain path separators/
   );
 
@@ -357,7 +446,7 @@ test("bundlePlugin rejects symlink in bin", async () => {
   fs.symlinkSync(path.join(pluginDir, "bin", "target.js"), path.join(pluginDir, "bin", "link.js"));
 
   await assert.rejects(
-    () => bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true }),
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
     /symlink/
   );
 
@@ -375,7 +464,13 @@ test("bundlePlugin output archive keeps plugin-id root directory", async () => {
   });
   writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
 
-  const outPath = await bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true });
+  const outPath = await bundlePlugin({
+    pluginDir,
+    outDir,
+    verbose: false,
+    noBuild: true,
+    noNpmDeps: true,
+  });
   const entries = await readBundleEntries(outPath);
   for (const key of entries.keys()) {
     assert.equal(key.startsWith("root-check/"), true);
@@ -399,7 +494,13 @@ test("bundlePlugin overwrites existing bundle file", async () => {
   const existingPath = path.join(outDir, "replace.ovcsp");
   writeText(existingPath, "not-a-tar");
 
-  const outPath = await bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true });
+  const outPath = await bundlePlugin({
+    pluginDir,
+    outDir,
+    verbose: false,
+    noBuild: true,
+    noNpmDeps: true,
+  });
   const entries = await readBundleEntries(outPath);
   assert.equal(entries.has("replace/openvcs.plugin.json"), true);
 
@@ -422,7 +523,13 @@ test("bundlePlugin generates package-lock when package.json exists", async () =>
     private: true,
   });
 
-  const outPath = await bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: false });
+  const outPath = await bundlePlugin({
+    pluginDir,
+    outDir,
+    verbose: false,
+    noBuild: true,
+    noNpmDeps: false,
+  });
   const entries = await readBundleEntries(outPath);
 
   assert.equal(fs.existsSync(path.join(pluginDir, "package-lock.json")), true);
@@ -448,7 +555,7 @@ test("bundlePlugin with --no-npm-deps does not generate lockfile", async () => {
     private: true,
   });
 
-  await bundlePlugin({ pluginDir, outDir, verbose: false, noNpmDeps: true });
+  await bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true });
 
   assert.equal(fs.existsSync(path.join(pluginDir, "package-lock.json")), false);
 

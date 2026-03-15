@@ -27,6 +27,7 @@ test("openvcs --help prints usage", () => {
   const result = runCli(["--help"]);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Usage: openvcs <command>/);
+  assert.match(result.stdout, /build \[args\]/);
 });
 
 test("openvcs with no args exits non-zero", () => {
@@ -39,6 +40,12 @@ test("openvcs dist --help prints dist usage", () => {
   const result = runCli(["dist", "--help"]);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /openvcs dist \[args\]/);
+});
+
+test("openvcs build --help prints build usage", () => {
+  const result = runCli(["build", "--help"]);
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /openvcs build \[args\]/);
 });
 
 test("openvcs init --help prints init usage", () => {
@@ -70,6 +77,7 @@ test("openvcs dist command creates bundle", () => {
     pluginDir,
     "--out",
     outDir,
+    "--no-build",
     "--no-npm-deps",
   ]);
 
@@ -84,4 +92,33 @@ test("openvcs dist reports argument errors", () => {
   const result = runCli(["dist", "--plugin-dir"]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /missing value for --plugin-dir/);
+});
+
+test("openvcs build command builds code plugin assets", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "build-plugin",
+    module: { exec: "plugin.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "build-plugin",
+    private: true,
+    scripts: {
+      "build:plugin": "node ./scripts/build-plugin.js",
+    },
+  });
+  writeText(
+    path.join(pluginDir, "scripts", "build-plugin.js"),
+    "const fs = require('node:fs');\nconst path = require('node:path');\nconst out = path.join(process.cwd(), 'bin', 'plugin.js');\nfs.mkdirSync(path.dirname(out), { recursive: true });\nfs.writeFileSync(out, 'export {};\\n', 'utf8');\n"
+  );
+
+  const result = runCli(["build", "--plugin-dir", pluginDir]);
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.trim(), "build-plugin");
+  assert.equal(fs.existsSync(path.join(pluginDir, "bin", "plugin.js")), true);
+
+  cleanupTempDir(root);
 });

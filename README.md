@@ -44,6 +44,7 @@ Run the local CLI through npm scripts:
 
 ```bash
 npm run openvcs -- --help
+npm run openvcs -- build --help
 npm run openvcs -- init --help
 npm run openvcs -- dist --help
 ```
@@ -66,15 +67,44 @@ Interactive theme plugin scaffold:
 openvcs init --theme my-theme
 ```
 
-## Build a `.ovcsp` bundle
+## Build plugin assets
 
-In a generated plugin folder:
+In a generated code plugin folder:
 
 ```bash
 npm run build
 ```
 
+This runs `openvcs build`, which executes `scripts["build:plugin"]` and verifies
+that `bin/<module.exec>` now exists.
+
+Theme-only plugins can also run `npm run build`; the command exits successfully
+without producing `bin/` output.
+
+## Build a `.ovcsp` bundle
+
+In a generated plugin folder:
+
+```bash
+npm run dist
+```
+
 This produces `dist/<plugin-id>.ovcsp`.
+
+`openvcs dist` runs `openvcs build` first unless `--no-build` is provided.
+Use `--no-build` when packaging prebuilt plugin assets.
+
+Generated code plugin scripts use this split by default:
+
+```json
+{
+  "scripts": {
+    "build:plugin": "tsc -p tsconfig.json",
+    "build": "openvcs build",
+    "dist": "openvcs dist --plugin-dir . --out dist"
+  }
+}
+```
 
 `.ovcsp` is a gzip-compressed tar archive (`tar.gz`) that contains a top-level
 `<plugin-id>/` directory with `openvcs.plugin.json` and plugin runtime assets.
@@ -93,15 +123,17 @@ Dependency behavior while packaging:
 Package a plugin manually:
 
 ```bash
-openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
+npx openvcs build --plugin-dir /path/to/plugin
+npx openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 ```
 
 Show command help:
 
 ```bash
-openvcs --help
-openvcs dist --help
-openvcs init --help
+npx openvcs --help
+npx openvcs build --help
+npx openvcs dist --help
+npx openvcs init --help
 ```
 
 ## Releases

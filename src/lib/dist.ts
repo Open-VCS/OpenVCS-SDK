@@ -1,12 +1,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { spawnSync } from "node:child_process";
 import tar = require("tar");
+import {
+  buildPluginAssets,
+  hasPackageJson,
+  npmExecutable,
+  readManifest,
+  runCommand,
+  validateDeclaredModuleExec,
+} from "./build";
 import {
   copyDirectoryRecursiveStrict,
   copyFileStrict,
   ensureDirectory,
-  isPathInside,
   rejectSymlinksRecursive,
 } from "./fs-utils";
 
@@ -19,25 +25,11 @@ interface DistArgs {
   outDir: string;
   verbose: boolean;
   noNpmDeps: boolean;
-}
-
-interface ManifestInfo {
-  pluginId: string;
-  moduleExec: string | undefined;
-  manifestPath: string;
-}
-
-interface CommandResult {
-  status: number | null;
-  error?: Error;
-}
-
-function npmExecutable(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
+  noBuild: boolean;
 }
 
 export function distUsage(commandName = "openvcs"): string {
-  return `${commandName} dist [args]\n\n  --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n  --out <path>          Output directory (default: ./dist)\n  --no-npm-deps         Disable npm dependency bundling (enabled by default)\n  -V, --verbose         Enable verbose output\n`;
+  return `${commandName} dist [args]\n\n  --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n  --out <path>          Output directory (default: ./dist)\n  --no-build            Skip the plugin build step before packaging\n  --no-npm-deps         Disable npm dependency bundling (enabled by default)\n  -V, --verbose         Enable verbose output\n`;
 }
 
 export function parseDistArgs(args: string[]): DistArgs {
@@ -45,6 +37,7 @@ export function parseDistArgs(args: string[]): DistArgs {
   let outDir = "dist";
   let verbose = false;
   let noNpmDeps = false;
+  let noBuild = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -68,6 +61,10 @@ export function parseDistArgs(args: string[]): DistArgs {
       noNpmDeps = true;
       continue;
     }
+    if (arg === "--no-build") {
+      noBuild = true;
+      continue;
+    }
     if (arg === "-V" || arg === "--verbose") {
       verbose = true;
       continue;
@@ -85,107 +82,8 @@ export function parseDistArgs(args: string[]): DistArgs {
     outDir: path.resolve(outDir),
     verbose,
     noNpmDeps,
+    noBuild,
   };
-}
-
-function readManifest(pluginDir: string): ManifestInfo {
-  const manifestPath = path.join(pluginDir, "openvcs.plugin.json");
-  let manifestRaw: string;
-  let manifestFd: number | undefined;
-  let manifest: unknown;
-  try {
-    manifestFd = fs.openSync(manifestPath, "r");
-    const manifestStat = fs.fstatSync(manifestFd);
-    if (!manifestStat.isFile()) {
-      throw new Error(`missing openvcs.plugin.json at ${manifestPath}`);
-    }
-    manifestRaw = fs.readFileSync(manifestFd, "utf8");
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error(`missing openvcs.plugin.json at ${manifestPath}`);
-    }
-    throw error;
-  } finally {
-    if (typeof manifestFd === "number") {
-      fs.closeSync(manifestFd);
-    }
-  }
-
-  try {
-    manifest = JSON.parse(manifestRaw);
-  } catch (error: unknown) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`parse ${manifestPath}: ${detail}`);
-  }
-
-  const pluginId =
-    typeof (manifest as { id?: unknown }).id === "string"
-      ? ((manifest as { id: string }).id.trim() as string)
-      : "";
-  if (!pluginId) {
-    throw new Error(`manifest ${manifestPath} is missing a string 'id'`);
-  }
-  if (pluginId === "." || pluginId === ".." || pluginId.includes("/") || pluginId.includes("\\")) {
-    throw new Error(`manifest id must not contain path separators: ${pluginId}`);
-  }
-
-  const moduleValue = (manifest as { module?: { exec?: unknown } }).module;
-  const moduleExec = typeof moduleValue?.exec === "string" ? moduleValue.exec.trim() : undefined;
-
-  return {
-    pluginId,
-    moduleExec,
-    manifestPath,
-  };
-}
-
-function validateDeclaredModuleExec(pluginDir: string, moduleExec: string | undefined): void {
-  if (!moduleExec) {
-    return;
-  }
-
-  const normalizedExec = moduleExec.trim();
-  const lowered = normalizedExec.toLowerCase();
-  if (!lowered.endsWith(".js") && !lowered.endsWith(".mjs") && !lowered.endsWith(".cjs")) {
-    throw new Error(`manifest exec must end with .js/.mjs/.cjs (Node runtime): ${moduleExec}`);
-  }
-  if (path.isAbsolute(normalizedExec)) {
-    throw new Error(`manifest module.exec must be a relative path under bin/: ${moduleExec}`);
-  }
-
-  const binDir = path.resolve(pluginDir, "bin");
-  const targetPath = path.resolve(binDir, normalizedExec);
-  if (!isPathInside(binDir, targetPath) || targetPath === binDir) {
-    throw new Error(`manifest module.exec must point to a file under bin/: ${moduleExec}`);
-  }
-  if (!fs.existsSync(targetPath) || !fs.lstatSync(targetPath).isFile()) {
-    throw new Error(`module entrypoint not found at ${targetPath}`);
-  }
-}
-
-function hasPackageJson(pluginDir: string): boolean {
-  const packageJsonPath = path.join(pluginDir, "package.json");
-  return fs.existsSync(packageJsonPath) && fs.lstatSync(packageJsonPath).isFile();
-}
-
-function runCommand(program: string, args: string[], cwd: string, verbose: boolean): void {
-  if (verbose) {
-    process.stderr.write(`Running command in ${cwd}: ${program} ${args.join(" ")}\n`);
-  }
-
-  const result = spawnSync(program, args, {
-    cwd,
-    stdio: ["ignore", verbose ? "inherit" : "ignore", "inherit"],
-  }) as CommandResult;
-
-  if (result.error) {
-    throw new Error(`failed to spawn '${program}' in ${cwd}: ${result.error.message}`);
-  }
-  if (result.status === 0) {
-    return;
-  }
-
-  throw new Error(`command failed (${program} ${args.join(" ")}), exit code ${result.status}`);
 }
 
 function ensurePackageLock(pluginDir: string, verbose: boolean): void {
@@ -297,12 +195,14 @@ async function writeTarGz(outPath: string, baseDir: string, folderName: string):
 }
 
 export async function bundlePlugin(parsedArgs: DistArgs): Promise<string> {
-  const { pluginDir, outDir, verbose, noNpmDeps } = parsedArgs;
+  const { pluginDir, outDir, verbose, noNpmDeps, noBuild } = parsedArgs;
   if (verbose) {
     process.stderr.write(`Bundling plugin from: ${pluginDir}\n`);
   }
 
-  const { pluginId, moduleExec, manifestPath } = readManifest(pluginDir);
+  const { pluginId, moduleExec, manifestPath } = noBuild
+    ? readManifest(pluginDir)
+    : buildPluginAssets({ pluginDir, verbose });
   const themesPath = path.join(pluginDir, "themes");
   const hasThemes = fs.existsSync(themesPath) && fs.lstatSync(themesPath).isDirectory();
   if (!moduleExec && !hasThemes) {

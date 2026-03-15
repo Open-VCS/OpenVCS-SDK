@@ -1,3 +1,4 @@
+import { buildPluginAssets, buildUsage, parseBuildArgs } from "./build";
 import { bundlePlugin, distUsage, parseDistArgs } from "./dist";
 import { initUsage, runInitCommand } from "./init";
 
@@ -17,7 +18,7 @@ function hasCode(error: unknown, code: string): boolean {
 }
 
 function usage(): string {
-  return "Usage: openvcs <command> [options]\n\nCommands:\n  dist [args]            Package plugin into .ovcsp\n  init [--theme] [dir]   Interactively scaffold a plugin project\n  -v, --version          Show version information\n\nDist args:\n  --plugin-dir <path>    Plugin root containing openvcs.plugin.json\n  --out <path>           Output directory (default: ./dist)\n  --no-npm-deps          Skip npm dependency bundling\n  -V, --verbose          Verbose output\n";
+  return "Usage: openvcs <command> [options]\n\nCommands:\n  build [args]           Build plugin runtime assets\n  dist [args]            Package plugin into .ovcsp\n  init [--theme] [dir]   Interactively scaffold a plugin project\n  -v, --version          Show version information\n\nBuild args:\n  --plugin-dir <path>    Plugin root containing openvcs.plugin.json\n  -V, --verbose          Verbose output\n\nDist args:\n  --plugin-dir <path>    Plugin root containing openvcs.plugin.json\n  --out <path>           Output directory (default: ./dist)\n  --no-build             Skip plugin build before packaging\n  --no-npm-deps          Skip npm dependency bundling\n  -V, --verbose          Verbose output\n";
 }
 
 export async function runCli(args: string[]): Promise<void> {
@@ -51,6 +52,24 @@ export async function runCli(args: string[]): Promise<void> {
     } catch (error: unknown) {
       if (hasCode(error, "USAGE")) {
         throw new Error(distUsage());
+      }
+      throw error;
+    }
+  }
+
+  if (command === "build") {
+    if (rest.includes("--help")) {
+      process.stdout.write(buildUsage());
+      return;
+    }
+    try {
+      const parsed = parseBuildArgs(rest);
+      const manifest = buildPluginAssets(parsed);
+      process.stdout.write(`${manifest.pluginId}\n`);
+      return;
+    } catch (error: unknown) {
+      if (hasCode(error, "USAGE")) {
+        throw new Error(buildUsage());
       }
       throw error;
     }

@@ -5,6 +5,7 @@
 - npm package entry is at repo root (`package.json`, `src/`, `bin/`, `lib/`, `test/`).
 - `src/bin/openvcs.ts` compiles to the executable entrypoint installed by npm (`bin/openvcs.js`).
 - `src/lib/cli.ts` routes subcommands.
+- `src/lib/build.ts` implements plugin asset builds (`openvcs build`).
 - `src/lib/dist.ts` implements plugin packaging (`openvcs dist`).
 - `src/lib/init.ts` implements interactive plugin scaffolding (`openvcs init`).
 - `src/lib/fs-utils.ts` contains file-copy and path safety helpers.
@@ -20,6 +21,7 @@
 - `npm run build` (compile TypeScript sources to `bin/` and `lib/`).
 - `npm test` (compile then run Node tests via `node --test`).
 - `npm run openvcs -- <args>` (run the local CLI with a prebuild step).
+- `openvcs build --plugin-dir /path/to/plugin` to build plugin runtime assets.
 - `openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce `.ovcsp` bundles.
 - `openvcs init [--theme] [dir]` to scaffold plugin projects.
 - Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
@@ -31,6 +33,7 @@
 - Use clear error messages that include the relevant path/flag/context.
 - Keep path validation strict for security-sensitive code paths.
 - API surfaces should return rich error messages explaining path, capability, or validation issues.
+- Code plugins should expose a `build:plugin` npm script so SDK build/dist can invoke compilation explicitly.
 
 ## Documentation & licensing
 

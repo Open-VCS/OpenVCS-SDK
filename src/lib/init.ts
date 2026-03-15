@@ -236,9 +236,10 @@ function writeModuleTemplate(answers: InitAnswers): void {
     private: true,
     type: "module",
     scripts: {
-      "build:ts": "tsc -p tsconfig.json",
-      build: "npm run build:ts && openvcs dist --plugin-dir . --out dist",
-      test: "openvcs dist --plugin-dir . --out dist --no-npm-deps",
+      "build:plugin": "tsc -p tsconfig.json",
+      build: "openvcs build",
+      dist: "openvcs dist --plugin-dir . --out dist",
+      test: "openvcs dist --plugin-dir . --out dist --no-build --no-npm-deps",
     },
     devDependencies: {
       "@openvcs/sdk": `^${packageJson.version}`,
@@ -272,8 +273,9 @@ function writeThemeTemplate(answers: InitAnswers): void {
     version: answers.pluginVersion,
     private: true,
     scripts: {
-      build: "openvcs dist --plugin-dir . --out dist",
-      test: "openvcs dist --plugin-dir . --out dist --no-npm-deps",
+      build: "openvcs build",
+      dist: "openvcs dist --plugin-dir . --out dist",
+      test: "openvcs dist --plugin-dir . --out dist --no-build --no-npm-deps",
     },
     devDependencies: {
       "@openvcs/sdk": `^${packageJson.version}`,
