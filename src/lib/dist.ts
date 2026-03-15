@@ -162,14 +162,21 @@ function installNpmDependencies(pluginDir: string, bundleDir: string, verbose: b
 }
 
 function copyIcon(pluginDir: string, bundleDir: string): void {
-  for (const extension of ICON_EXTENSIONS) {
-    const fileName = `icon.${extension}`;
-    const sourcePath = path.join(pluginDir, fileName);
-    if (!fs.existsSync(sourcePath)) {
-      continue;
+  const entries = fs.readdirSync(pluginDir, { withFileTypes: true });
+  const iconEntries = entries.filter((e) => {
+    if (!e.isFile()) return false;
+    const name = e.name.toLowerCase();
+    return name.startsWith("icon.") && ICON_EXTENSIONS.includes(name.slice(5));
+  });
+  for (const ext of ICON_EXTENSIONS) {
+    const found = iconEntries.find((e) => e.name.toLowerCase() === `icon.${ext}`);
+    if (found) {
+      copyFileStrict(
+        path.join(pluginDir, found.name),
+        path.join(bundleDir, found.name)
+      );
+      return;
     }
-    copyFileStrict(sourcePath, path.join(bundleDir, fileName));
-    return;
   }
 }
 

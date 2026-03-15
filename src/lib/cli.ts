@@ -28,7 +28,7 @@ export async function runCli(args: string[]): Promise<void> {
     return;
   }
 
-  if (args.includes("-v") || args.includes("--version")) {
+  if (args[0] === "-v" || args[0] === "--version") {
     process.stdout.write(`openvcs ${packageJson.version}\n`);
     return;
   }
