@@ -3,7 +3,7 @@
   "version": "0.2.3",
   "description": "OpenVCS SDK CLI for plugin scaffolding and .ovcsp tar.gz packaging",
   "license": "GPL-3.0-or-later",
-  "homepage": "https://bbgames.dev/",
+  "homepage": "https://openvcs.app/",
   "repository": {
     "type": "git",
     "url": "https://github.com/Open-VCS/OpenVCS-SDK"
