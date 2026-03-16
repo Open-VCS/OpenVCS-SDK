@@ -1,8 +1,10 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const test = require("node:test");
 const path = require("node:path");
 
 const { __private } = require("../lib/init");
+const { cleanupTempDir, makeTempDir } = require("./helpers");
 
 test("validatePluginId accepts regular ids", () => {
   assert.equal(__private.validatePluginId("my.plugin"), undefined);
@@ -62,4 +64,27 @@ test("collectAnswers re-prompts invalid plugin id", async () => {
   assert.equal(answers.defaultEnabled, true);
   assert.equal(answers.runNpmInstall, false);
   assert.equal(messages.some((message) => message.includes("must not contain path separators")), true);
+});
+
+test("writeModuleTemplate scaffolds SDK runtime entrypoint", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const targetDir = path.join(root, "plugin");
+
+  __private.writeModuleTemplate({
+    targetDir,
+    kind: "module",
+    pluginId: "example.plugin",
+    pluginName: "Example Plugin",
+    pluginVersion: "0.1.0",
+    defaultEnabled: true,
+    runNpmInstall: false,
+  });
+
+  const pluginSource = fs.readFileSync(path.join(targetDir, "src", "plugin.ts"), "utf8");
+
+  assert.match(pluginSource, /createPluginRuntime/);
+  assert.match(pluginSource, /startPluginRuntime/);
+  assert.match(pluginSource, /context\.host\.info\('OpenVCS plugin started'\)/);
+
+  cleanupTempDir(root);
 });

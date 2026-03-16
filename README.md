@@ -7,7 +7,9 @@
 OpenVCS SDK for npm-based plugin development.
 
 Install this package in plugin projects, scaffold a starter plugin, and package
-plugins into `.ovcsp` bundles.
+plugins into `.ovcsp` bundles. The SDK also exports a Node-only JSON-RPC runtime
+layer and shared protocol/types so plugins do not have to hand-roll stdio
+framing or method dispatch.
 
 ## Install
 
@@ -60,6 +62,33 @@ openvcs init my-plugin
 The generated module template includes TypeScript and Node typings (`@types/node`).
 Plugin IDs entered during scaffold must not be `.`/`..` and must not contain path
 separators (`/` or `\\`).
+
+Generated module plugins now start with a working SDK runtime entrypoint:
+
+```ts
+import { createPluginRuntime, startPluginRuntime } from '@openvcs/sdk/runtime';
+
+const runtime = createPluginRuntime({
+  plugin: {
+    async 'plugin.init'(_params, context) {
+      context.host.info('OpenVCS plugin started');
+      return null;
+    },
+  },
+});
+
+startPluginRuntime(runtime);
+```
+
+Runtime and protocol imports are exposed as npm subpaths:
+
+```ts
+import { createPluginRuntime, pluginError } from '@openvcs/sdk/runtime';
+import type { PluginDelegates, VcsDelegates } from '@openvcs/sdk/types';
+```
+
+The runtime handles stdio framing, JSON-RPC request dispatch, host notifications,
+default `plugin.*` handlers, and exact-method delegate registration for `vcs.*`.
 
 Interactive theme plugin scaffold:
 

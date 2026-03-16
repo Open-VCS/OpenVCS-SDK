@@ -17,6 +17,19 @@
   "bin": {
     "openvcs": "bin/openvcs.js"
   },
+  "exports": {
+    "./runtime": {
+      "types": "./lib/runtime/index.d.ts",
+      "require": "./lib/runtime/index.js",
+      "default": "./lib/runtime/index.js"
+    },
+    "./types": {
+      "types": "./lib/types/index.d.ts",
+      "require": "./lib/types/index.js",
+      "default": "./lib/types/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "node scripts/build-sdk.js",
     "test": "npm run build && node --test test/*.test.js",

@@ -262,7 +262,7 @@ function writeModuleTemplate(answers: InitAnswers): void {
   });
   writeText(
     path.join(answers.targetDir, "src", "plugin.ts"),
-    "const message = \"OpenVCS plugin started\";\nprocess.stderr.write(`${message}\\n`);\n"
+    "// Copyright © 2025-2026 OpenVCS Contributors\n// SPDX-License-Identifier: GPL-3.0-or-later\n\nimport { createPluginRuntime, startPluginRuntime } from '@openvcs/sdk/runtime';\n\nconst runtime = createPluginRuntime({\n  plugin: {\n    async 'plugin.init'(_params, context) {\n      context.host.info('OpenVCS plugin started');\n      return null;\n    },\n  },\n});\n\nstartPluginRuntime(runtime);\n"
   );
 }
 
@@ -363,4 +363,5 @@ export const __private = {
   defaultPluginIdFromDir,
   sanitizeIdToken,
   validatePluginId,
+  writeModuleTemplate,
 };
