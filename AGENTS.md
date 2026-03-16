@@ -1,58 +1,51 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project structure & module responsibilities
+- SDK source is authored in `src/` and compiled to runtime files in `bin/` and `lib/`.
+- npm package entry is at repo root (`package.json`, `src/`, `bin/`, `lib/`, `test/`).
+- `src/bin/openvcs.ts` compiles to the executable entrypoint installed by npm (`bin/openvcs.js`).
+- `src/lib/cli.ts` routes subcommands.
+- `src/lib/build.ts` implements plugin asset builds (`openvcs build`).
+- `src/lib/dist.ts` implements plugin packaging (`openvcs dist`).
+- `src/lib/init.ts` implements interactive plugin scaffolding (`openvcs init`).
+- `src/lib/fs-utils.ts` contains file-copy and path safety helpers.
+- Build outputs go under plugin `dist/` folders.
 
-- `src/lib.rs`: Rust library crate (`openvcs-sdk`), currently exporting `openvcs_sdk::dist`.
-- `src/dist.rs`: Core packaging/bundling logic (reads `openvcs.plugin.json`, builds WASI binaries, writes `.ovcsp` tar.xz bundles).
-- `src/main.rs`: `openvcs-plugin` binary entrypoint (plugin bundler CLI).
-- `src/bin/cargo-openvcs.rs`: `cargo-openvcs` binary (`cargo openvcs dist ...`) convenience wrapper.
-- `dist/`: local output directory for bundles and staging (gitignored).
-- `target/`: Cargo build output (gitignored).
-- `.github/workflows/`: CI, nightly, release, and CodeQL workflows.
+## Architecture reference
+- SDK is focused on plugin packaging, not runtime execution.
+- Bundles follow the `.ovcsp` format as gzip-compressed tar (`tar.gz`) containing `openvcs.plugin.json` plus plugin assets (`bin/`, `entry`, `themes/`, optional `node_modules/`).
+- Keep manifest fields and bundle structure consistent with host expectations.
 
-## Build, Test, and Development Commands
+## Build, test, and tooling commands
+- `npm install` (install SDK dependencies).
+- `npm run build` (compile TypeScript sources to `bin/` and `lib/`).
+- `npm test` (compile then run Node tests via `node --test`).
+- `npm run openvcs -- <args>` (run the local CLI with a prebuild step).
+- `openvcs build --plugin-dir /path/to/plugin` to build plugin runtime assets.
+- `openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce `.ovcsp` bundles.
+- `openvcs init [--theme] [dir]` to scaffold plugin projects.
+- Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
 
-- Build (debug): `cargo build`
-- Build (release): `cargo build --release`
-- Check (CI-like): `cargo check --all-targets`
-- Run bundler CLI: `cargo run --bin openvcs-plugin -- --plugin-dir /path/to/plugin --out dist`
-- Run cargo subcommand wrapper: `cargo run --bin cargo-openvcs -- dist --help`
-- Format: `cargo fmt`
-- Lint (recommended): `cargo clippy --all-targets -- -D warnings`
+## Coding style & conventions
+- Author code in TypeScript (`src/**/*.ts`) targeting Node 18+.
+- Compiled outputs in `bin/` and `lib/` are generated artifacts; do not edit them manually.
+- Prefer small, focused modules in `src/lib/` and keep files under 1000 lines.
+- Use clear error messages that include the relevant path/flag/context.
+- Keep path validation strict for security-sensitive code paths.
+- API surfaces should return rich error messages explaining path, capability, or validation issues.
+- Code plugins should expose a `build:plugin` npm script so SDK build/dist can invoke compilation explicitly.
 
-## Before Committing
+## Documentation & licensing
 
-- Required: `cargo fmt`
-- CI runs `cargo clippy --all-targets -- -D warnings` after rustfmt.
+- When you change behavior, workflows, CLI flags, bundle layout, or manifest expectations, ALWAYS update the relevant documentation in the same change, even if the user does not explicitly ask.
+- All code files MUST be no more than 1000 lines; split files before they exceed this limit.
 
-## Coding Style & Naming Conventions
+## Testing guidelines
+- Keep Node tests in `test/` near the feature area they validate.
+- Name tests descriptively and cover bundle safety checks (symlinks, path traversal, native addons).
+- Before PRs, run `npm test`.
 
-- Rust edition: 2024 (see `Cargo.toml`).
-- Formatting: use `rustfmt` (`cargo fmt`) before pushing.
-- Naming: follow Rust conventions (modules `snake_case`, types `PascalCase`, functions/vars `snake_case`).
-- Prefer clear error messages (most functions return `Result<_, String>` in `src/dist.rs`).
-
-## Testing Guidelines
-
-- Run tests with `cargo test` (CI runs this on `Dev`).
-- Add unit tests in the defining module (e.g., `src/dist.rs` with `#[test]`), and use `tests/` for integration tests if needed.
-
-## Commit & Pull Request Guidelines
-
-- Commits in this repo typically use short, imperative subjects (e.g., “Update …”, “Fix …”); keep messages concise and scoped.
-- Commit message format: agents must format commit messages with a short
-  title of at most 72 characters, followed by a blank line and any
-  additional explanatory text in the body.
-- Open PRs against the `Dev` branch; keep `Stable` for releases.
-- PRs should include: a brief description of behavior changes, how you tested (`cargo test`, bundling command used), and any linked issue(s).
-
-- Agents / automation: allowed to create or amend local commits and branches (for example, `git commit`, `git commit --amend`, and creating topic branches), but MUST NOT push commits to the remote or open pull requests.
-- When an agent prepares changes, it should run the project's fixer command `just fix` (agents MUST NOT run `cargo fmt` or `cargo clippy` manually), create a descriptive commit, and then notify a human reviewer who will push the branch and open the PR.
-- CI or other trusted automation that has been explicitly approved in project policy may be exempted; otherwise treat pushing as a human action.
-
-**Sandbox note**: Running `just fix` and some `cargo` commands (for example `cargo build`, `cargo test`, or commands that fetch dependencies or add toolchain targets) may require network access or host-level tooling and therefore should be run outside a restricted sandbox or container. If operating with sandboxing or restricted network access, request approval before executing these commands or run them on the host machine.
-
-## Packaging Notes (WASI)
-
-- Plugins are built for WASI targets (`wasm32-wasip1` first, with a fallback to `wasm32-wasi`).
-- If local builds fail due to missing targets, install via `rustup target add wasm32-wasip1` (and/or `wasm32-wasi`).
+## Commit & PR guidelines
+- Use short, imperative commit messages (<=72 chars) such as `sdk: validate manifest fields`.
+- PRs should explain the new workflow, list commands/tests run, and surface any user-visible bundle changes (new capabilities, layout updates, etc.).
+- Update this AGENTS whenever SDK workflows or packaging expectations change so the guidance stays fresh.

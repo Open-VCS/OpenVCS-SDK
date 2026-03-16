@@ -1,0 +1,42 @@
+{
+  "name": "@openvcs/sdk",
+  "version": "0.2.3",
+  "description": "OpenVCS SDK CLI for plugin scaffolding and .ovcsp tar.gz packaging",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://bbgames.dev/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-VCS/OpenVCS-SDK"
+  },
+  "bugs": {
+    "url": "https://github.com/Open-VCS/OpenVCS-SDK/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "openvcs": "bin/openvcs.js"
+  },
+  "scripts": {
+    "build": "node scripts/build-sdk.js",
+    "test": "npm run build && node --test test/*.test.js",
+    "prepack": "npm run build",
+    "preopenvcs": "npm run build",
+    "openvcs": "node bin/openvcs.js"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "tar": "^7.4.3"
+  },
+  "files": [
+    "src/",
+    "bin/",
+    "lib/",
+    "test/",
+    "README.md",
+    "LICENSE"
+  ]
+}
