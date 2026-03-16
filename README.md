@@ -109,10 +109,18 @@ Generated code plugin scripts use this split by default:
 `.ovcsp` is a gzip-compressed tar archive (`tar.gz`) that contains a top-level
 `<plugin-id>/` directory with `openvcs.plugin.json` and plugin runtime assets.
 
+Bundle contents:
+- `openvcs.plugin.json` (required)
+- `icon.*` (optional, first found by extension priority)
+- `bin/` (required for code plugins with `module.exec`)
+- `entry` file (required for UI plugins with top-level `entry` field)
+- `themes/` (required for theme plugins)
+- `node_modules/` (if npm dependencies are bundled)
+
 Dependency behavior while packaging:
 
 - npm dependency bundling is enabled by default when `package.json` exists.
-- If `package-lock.json` is missing, SDK generates it in the plugin worktree.
+- If `package-lock.json` is missing, SDK generates it in the staging area (not the plugin worktree).
 - Dependencies are installed into the bundle staging dir with:
   - `npm ci --omit=dev --ignore-scripts --no-bin-links --no-audit --no-fund`
 - Disable npm dependency processing with `--no-npm-deps`.

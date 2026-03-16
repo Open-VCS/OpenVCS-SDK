@@ -4,6 +4,7 @@ import tar = require("tar");
 import {
   buildPluginAssets,
   hasPackageJson,
+  ManifestInfo,
   npmExecutable,
   readManifest,
   runCommand,
@@ -13,6 +14,7 @@ import {
   copyDirectoryRecursiveStrict,
   copyFileStrict,
   ensureDirectory,
+  isPathInside,
   rejectSymlinksRecursive,
 } from "./fs-utils";
 
@@ -86,7 +88,45 @@ export function parseDistArgs(args: string[]): DistArgs {
   };
 }
 
-function ensurePackageLock(pluginDir: string, verbose: boolean): void {
+interface ManifestWithEntry {
+  entry?: unknown;
+}
+
+function readManifestEntry(pluginDir: string, manifest: ManifestInfo): string | undefined {
+  const manifestPath = path.join(pluginDir, "openvcs.plugin.json");
+  const manifestRaw = fs.readFileSync(manifestPath, "utf8");
+  const parsed = JSON.parse(manifestRaw) as ManifestWithEntry;
+  const entry = parsed.entry;
+
+  if (typeof entry === "string") {
+    return entry.trim();
+  }
+  return undefined;
+}
+
+function validateManifestEntry(pluginDir: string, entry: string): void {
+  const normalized = entry.trim();
+  if (path.isAbsolute(normalized)) {
+    throw new Error(`manifest entry must be a relative path: ${entry}`);
+  }
+  const targetPath = path.resolve(pluginDir, normalized);
+  const pluginDirResolved = path.resolve(pluginDir);
+  if (!isPathInside(pluginDirResolved, targetPath) || targetPath === pluginDirResolved) {
+    throw new Error(`manifest entry must point to a file under the plugin directory: ${entry}`);
+  }
+  if (!fs.existsSync(targetPath) || !fs.lstatSync(targetPath).isFile()) {
+    throw new Error(`manifest entry file not found: ${entry}`);
+  }
+}
+
+function copyManifestEntry(pluginDir: string, bundleDir: string, entry: string): void {
+  const normalized = entry.trim();
+  const sourcePath = path.join(pluginDir, normalized);
+  const destPath = path.join(bundleDir, normalized);
+  copyFileStrict(sourcePath, destPath);
+}
+
+function ensurePackageLock(pluginDir: string, bundleDir: string, verbose: boolean): void {
   if (!hasPackageJson(pluginDir)) {
     return;
   }
@@ -96,12 +136,12 @@ function ensurePackageLock(pluginDir: string, verbose: boolean): void {
   }
 
   if (verbose) {
-    process.stderr.write(`Generating package-lock.json in ${pluginDir}\n`);
+    process.stderr.write(`Generating package-lock.json in staging\n`);
   }
   runCommand(
     npmExecutable(),
     ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"],
-    pluginDir,
+    bundleDir,
     verbose
   );
 }
@@ -113,12 +153,12 @@ function copyNpmFilesToStaging(pluginDir: string, bundleDir: string): void {
   if (!fs.existsSync(packageJsonPath) || !fs.lstatSync(packageJsonPath).isFile()) {
     throw new Error(`missing package.json at ${packageJsonPath}`);
   }
-  if (!fs.existsSync(lockPath) || !fs.lstatSync(lockPath).isFile()) {
-    throw new Error(`missing package-lock.json at ${lockPath}`);
-  }
 
   copyFileStrict(packageJsonPath, path.join(bundleDir, "package.json"));
-  copyFileStrict(lockPath, path.join(bundleDir, "package-lock.json"));
+
+  if (fs.existsSync(lockPath) && fs.lstatSync(lockPath).isFile()) {
+    copyFileStrict(lockPath, path.join(bundleDir, "package-lock.json"));
+  }
 }
 
 function rejectNativeAddonsRecursive(dirPath: string): void {
@@ -212,8 +252,12 @@ export async function bundlePlugin(parsedArgs: DistArgs): Promise<string> {
     : buildPluginAssets({ pluginDir, verbose });
   const themesPath = path.join(pluginDir, "themes");
   const hasThemes = fs.existsSync(themesPath) && fs.lstatSync(themesPath).isDirectory();
-  if (!moduleExec && !hasThemes) {
-    throw new Error("manifest has no module.exec or themes/");
+  const manifestEntry = readManifestEntry(pluginDir, { pluginId, moduleExec, manifestPath });
+  if (manifestEntry) {
+    validateManifestEntry(pluginDir, manifestEntry);
+  }
+  if (!moduleExec && !hasThemes && !manifestEntry) {
+    throw new Error("manifest has no module.exec, entry, or themes/");
   }
   validateDeclaredModuleExec(pluginDir, moduleExec);
 
@@ -227,6 +271,10 @@ export async function bundlePlugin(parsedArgs: DistArgs): Promise<string> {
     copyFileStrict(manifestPath, path.join(bundleDir, "openvcs.plugin.json"));
     copyIcon(pluginDir, bundleDir);
 
+    if (manifestEntry) {
+      copyManifestEntry(pluginDir, bundleDir, manifestEntry);
+    }
+
     const sourceBinDir = path.join(pluginDir, "bin");
     if (fs.existsSync(sourceBinDir) && fs.lstatSync(sourceBinDir).isDirectory()) {
       copyDirectoryRecursiveStrict(sourceBinDir, path.join(bundleDir, "bin"));
@@ -236,7 +284,7 @@ export async function bundlePlugin(parsedArgs: DistArgs): Promise<string> {
     }
 
     if (!noNpmDeps && hasPackageJson(pluginDir)) {
-      ensurePackageLock(pluginDir, verbose);
+      ensurePackageLock(pluginDir, bundleDir, verbose);
       installNpmDependencies(pluginDir, bundleDir, verbose);
     }
 
@@ -259,5 +307,6 @@ export const __private = {
   rejectNativeAddonsRecursive,
   uniqueStagingDir,
   validateDeclaredModuleExec,
+  validateManifestEntry,
   writeTarGz,
 };

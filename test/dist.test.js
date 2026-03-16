@@ -256,7 +256,7 @@ test("bundlePlugin writes a gzip .ovcsp for themes-only plugin", async () => {
   cleanupTempDir(root);
 });
 
-test("bundlePlugin rejects manifest with no module and no themes", async () => {
+test("bundlePlugin rejects manifest with no module, entry, or themes", async () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
   const outDir = path.join(root, "out");
@@ -264,7 +264,7 @@ test("bundlePlugin rejects manifest with no module and no themes", async () => {
 
   await assert.rejects(
     () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
-    /manifest has no module\.exec or themes\//
+    /manifest has no module\.exec, entry, or themes\//
   );
 
   cleanupTempDir(root);
@@ -507,7 +507,7 @@ test("bundlePlugin overwrites existing bundle file", async () => {
   cleanupTempDir(root);
 });
 
-test("bundlePlugin generates package-lock when package.json exists", async () => {
+test("bundlePlugin generates package-lock in staging, not pluginDir", async () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
   const outDir = path.join(root, "out");
@@ -532,7 +532,7 @@ test("bundlePlugin generates package-lock when package.json exists", async () =>
   });
   const entries = await readBundleEntries(outPath);
 
-  assert.equal(fs.existsSync(path.join(pluginDir, "package-lock.json")), true);
+  assert.equal(fs.existsSync(path.join(pluginDir, "package-lock.json")), false);
   assert.equal(entries.has("npm-plugin/package.json"), true);
   assert.equal(entries.has("npm-plugin/package-lock.json"), true);
 
@@ -558,6 +558,89 @@ test("bundlePlugin with --no-npm-deps does not generate lockfile", async () => {
   await bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true });
 
   assert.equal(fs.existsSync(path.join(pluginDir, "package-lock.json")), false);
+
+  cleanupTempDir(root);
+});
+
+test("bundlePlugin bundles manifest entry file", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  const outDir = path.join(root, "out");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "ui-plugin",
+    entry: "ui/index.html",
+  });
+  writeText(path.join(pluginDir, "ui", "index.html"), "<html></html>\n");
+  writeText(path.join(pluginDir, "icon.png"), "icon-bytes");
+
+  const outPath = await bundlePlugin({
+    pluginDir,
+    outDir,
+    verbose: false,
+    noBuild: true,
+    noNpmDeps: true,
+  });
+  const entries = await readBundleEntries(outPath);
+
+  assert.equal(entries.has("ui-plugin/openvcs.plugin.json"), true);
+  assert.equal(entries.has("ui-plugin/ui/index.html"), true);
+  assert.equal(entries.has("ui-plugin/icon.png"), true);
+
+  cleanupTempDir(root);
+});
+
+test("bundlePlugin rejects manifest entry path traversal", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  const outDir = path.join(root, "out");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "bad-entry",
+    entry: "../secret.txt",
+  });
+  writeText(path.join(pluginDir, "secret.txt"), "secret");
+
+  await assert.rejects(
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
+    /manifest entry must point to a file under the plugin directory/
+  );
+
+  cleanupTempDir(root);
+});
+
+test("bundlePlugin rejects manifest entry absolute path", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  const outDir = path.join(root, "out");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "abs-entry",
+    entry: "/tmp/secret.txt",
+  });
+
+  await assert.rejects(
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
+    /manifest entry must be a relative path/
+  );
+
+  cleanupTempDir(root);
+});
+
+test("bundlePlugin rejects missing manifest entry file", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  const outDir = path.join(root, "out");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "missing-entry",
+    entry: "nonexistent.html",
+  });
+
+  await assert.rejects(
+    () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
+    /manifest entry file not found/
+  );
 
   cleanupTempDir(root);
 });

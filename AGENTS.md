@@ -13,7 +13,7 @@
 
 ## Architecture reference
 - SDK is focused on plugin packaging, not runtime execution.
-- Bundles follow the `.ovcsp` format as gzip-compressed tar (`tar.gz`) containing `openvcs.plugin.json` plus plugin assets (`bin/`, `themes/`, optional `node_modules/`).
+- Bundles follow the `.ovcsp` format as gzip-compressed tar (`tar.gz`) containing `openvcs.plugin.json` plus plugin assets (`bin/`, `entry`, `themes/`, optional `node_modules/`).
 - Keep manifest fields and bundle structure consistent with host expectations.
 
 ## Build, test, and tooling commands
