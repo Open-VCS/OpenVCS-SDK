@@ -19,6 +19,7 @@ export interface BuildArgs {
 export interface ManifestInfo {
   pluginId: string;
   moduleExec: string | undefined;
+  entry: string | undefined;
   manifestPath: string;
 }
 
@@ -119,9 +120,13 @@ export function readManifest(pluginDir: string): ManifestInfo {
   const moduleValue = (manifest as { module?: { exec?: unknown } }).module;
   const moduleExec = typeof moduleValue?.exec === "string" ? moduleValue.exec.trim() : undefined;
 
+  const entryValue = (manifest as { entry?: unknown }).entry;
+  const entry = typeof entryValue === "string" ? entryValue.trim() : undefined;
+
   return {
     pluginId,
     moduleExec,
+    entry,
     manifestPath,
   };
 }

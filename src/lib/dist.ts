@@ -88,22 +88,6 @@ export function parseDistArgs(args: string[]): DistArgs {
   };
 }
 
-interface ManifestWithEntry {
-  entry?: unknown;
-}
-
-function readManifestEntry(pluginDir: string, manifest: ManifestInfo): string | undefined {
-  const manifestPath = path.join(pluginDir, "openvcs.plugin.json");
-  const manifestRaw = fs.readFileSync(manifestPath, "utf8");
-  const parsed = JSON.parse(manifestRaw) as ManifestWithEntry;
-  const entry = parsed.entry;
-
-  if (typeof entry === "string") {
-    return entry.trim();
-  }
-  return undefined;
-}
-
 function validateManifestEntry(pluginDir: string, entry: string): void {
   const normalized = entry.trim();
   if (path.isAbsolute(normalized)) {
@@ -119,11 +103,17 @@ function validateManifestEntry(pluginDir: string, entry: string): void {
   }
 }
 
-function copyManifestEntry(pluginDir: string, bundleDir: string, entry: string): void {
+function copyEntryDirectory(pluginDir: string, bundleDir: string, entry: string): void {
   const normalized = entry.trim();
-  const sourcePath = path.join(pluginDir, normalized);
-  const destPath = path.join(bundleDir, normalized);
-  copyFileStrict(sourcePath, destPath);
+  const entryDir = path.dirname(normalized);
+  const sourceDir = path.join(pluginDir, entryDir);
+  const destDir = path.join(bundleDir, entryDir);
+  if (entryDir === ".") {
+    const sourcePath = path.join(pluginDir, normalized);
+    copyFileStrict(sourcePath, path.join(bundleDir, normalized));
+  } else {
+    copyDirectoryRecursiveStrict(sourceDir, destDir);
+  }
 }
 
 function ensurePackageLock(pluginDir: string, bundleDir: string, verbose: boolean): void {
@@ -255,16 +245,15 @@ export async function bundlePlugin(parsedArgs: DistArgs): Promise<string> {
     process.stderr.write(`Bundling plugin from: ${pluginDir}\n`);
   }
 
-  const { pluginId, moduleExec, manifestPath } = noBuild
+  const { pluginId, moduleExec, entry, manifestPath } = noBuild
     ? readManifest(pluginDir)
     : buildPluginAssets({ pluginDir, verbose });
   const themesPath = path.join(pluginDir, "themes");
   const hasThemes = fs.existsSync(themesPath) && fs.lstatSync(themesPath).isDirectory();
-  const manifestEntry = readManifestEntry(pluginDir, { pluginId, moduleExec, manifestPath });
-  if (manifestEntry) {
-    validateManifestEntry(pluginDir, manifestEntry);
+  if (entry) {
+    validateManifestEntry(pluginDir, entry);
   }
-  if (!moduleExec && !hasThemes && !manifestEntry) {
+  if (!moduleExec && !hasThemes && !entry) {
     throw new Error("manifest has no module.exec, entry, or themes/");
   }
   validateDeclaredModuleExec(pluginDir, moduleExec);
@@ -279,8 +268,8 @@ export async function bundlePlugin(parsedArgs: DistArgs): Promise<string> {
     copyFileStrict(manifestPath, path.join(bundleDir, "openvcs.plugin.json"));
     copyIcon(pluginDir, bundleDir);
 
-    if (manifestEntry) {
-      copyManifestEntry(pluginDir, bundleDir, manifestEntry);
+    if (entry) {
+      copyEntryDirectory(pluginDir, bundleDir, entry);
     }
 
     const sourceBinDir = path.join(pluginDir, "bin");

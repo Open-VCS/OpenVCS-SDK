@@ -562,7 +562,7 @@ test("bundlePlugin with --no-npm-deps does not generate lockfile", async () => {
   cleanupTempDir(root);
 });
 
-test("bundlePlugin bundles manifest entry file", async () => {
+test("bundlePlugin bundles manifest entry file with sibling assets", async () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
   const outDir = path.join(root, "out");
@@ -572,6 +572,8 @@ test("bundlePlugin bundles manifest entry file", async () => {
     entry: "ui/index.html",
   });
   writeText(path.join(pluginDir, "ui", "index.html"), "<html></html>\n");
+  writeText(path.join(pluginDir, "ui", "app.js"), "console.log('ui');\n");
+  writeText(path.join(pluginDir, "ui", "styles.css"), "body {}\n");
   writeText(path.join(pluginDir, "icon.png"), "icon-bytes");
 
   const outPath = await bundlePlugin({
@@ -585,6 +587,8 @@ test("bundlePlugin bundles manifest entry file", async () => {
 
   assert.equal(entries.has("ui-plugin/openvcs.plugin.json"), true);
   assert.equal(entries.has("ui-plugin/ui/index.html"), true);
+  assert.equal(entries.has("ui-plugin/ui/app.js"), true);
+  assert.equal(entries.has("ui-plugin/ui/styles.css"), true);
   assert.equal(entries.has("ui-plugin/icon.png"), true);
 
   cleanupTempDir(root);

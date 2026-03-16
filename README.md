@@ -113,7 +113,7 @@ Bundle contents:
 - `openvcs.plugin.json` (required)
 - `icon.*` (optional, first found by extension priority)
 - `bin/` (required for code plugins with `module.exec`)
-- `entry` file (required for UI plugins with top-level `entry` field)
+- `entry` directory (required for UI plugins with top-level `entry` field; the entire directory containing the entry file is bundled)
 - `themes/` (required for theme plugins)
 - `node_modules/` (if npm dependencies are bundled)
 
