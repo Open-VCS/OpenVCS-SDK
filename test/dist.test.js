@@ -594,6 +594,36 @@ test("bundlePlugin bundles manifest entry file with sibling assets", async () =>
   cleanupTempDir(root);
 });
 
+test("bundlePlugin bundles root-level entry with sibling assets", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  const outDir = path.join(root, "out");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "root-ui",
+    entry: "index.html",
+  });
+  writeText(path.join(pluginDir, "index.html"), "<html></html>\n");
+  writeText(path.join(pluginDir, "app.js"), "console.log('ui');\n");
+  writeText(path.join(pluginDir, "styles.css"), "body {}\n");
+
+  const outPath = await bundlePlugin({
+    pluginDir,
+    outDir,
+    verbose: false,
+    noBuild: true,
+    noNpmDeps: true,
+  });
+  const entries = await readBundleEntries(outPath);
+
+  assert.equal(entries.has("root-ui/openvcs.plugin.json"), true);
+  assert.equal(entries.has("root-ui/index.html"), true);
+  assert.equal(entries.has("root-ui/app.js"), true);
+  assert.equal(entries.has("root-ui/styles.css"), true);
+
+  cleanupTempDir(root);
+});
+
 test("bundlePlugin rejects manifest entry path traversal", async () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
