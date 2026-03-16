@@ -135,6 +135,9 @@ function ensurePackageLock(pluginDir: string, bundleDir: string, verbose: boolea
     return;
   }
 
+  const packageJsonPath = path.join(pluginDir, "package.json");
+  copyFileStrict(packageJsonPath, path.join(bundleDir, "package.json"));
+
   if (verbose) {
     process.stderr.write(`Generating package-lock.json in staging\n`);
   }
@@ -155,6 +158,11 @@ function copyNpmFilesToStaging(pluginDir: string, bundleDir: string): void {
   }
 
   copyFileStrict(packageJsonPath, path.join(bundleDir, "package.json"));
+
+  const stagedLockPath = path.join(bundleDir, "package-lock.json");
+  if (fs.existsSync(stagedLockPath) && fs.lstatSync(stagedLockPath).isFile()) {
+    return;
+  }
 
   if (fs.existsSync(lockPath) && fs.lstatSync(lockPath).isFile()) {
     copyFileStrict(lockPath, path.join(bundleDir, "package-lock.json"));
