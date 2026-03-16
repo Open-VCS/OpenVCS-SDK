@@ -108,12 +108,7 @@ function copyEntryDirectory(pluginDir: string, bundleDir: string, entry: string)
   const entryDir = path.dirname(normalized);
   const sourceDir = path.join(pluginDir, entryDir);
   const destDir = path.join(bundleDir, entryDir);
-  if (entryDir === ".") {
-    const sourcePath = path.join(pluginDir, normalized);
-    copyFileStrict(sourcePath, path.join(bundleDir, normalized));
-  } else {
-    copyDirectoryRecursiveStrict(sourceDir, destDir);
-  }
+  copyDirectoryRecursiveStrict(sourceDir, destDir);
 }
 
 function ensurePackageLock(pluginDir: string, bundleDir: string, verbose: boolean): void {
