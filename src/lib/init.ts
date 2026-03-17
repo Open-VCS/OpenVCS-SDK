@@ -241,8 +241,10 @@ function writeModuleTemplate(answers: InitAnswers): void {
       dist: "openvcs dist --plugin-dir . --out dist",
       test: "openvcs dist --plugin-dir . --out dist --no-build --no-npm-deps",
     },
-    devDependencies: {
+    dependencies: {
       "@openvcs/sdk": `^${packageJson.version}`,
+    },
+    devDependencies: {
       "@types/node": "^22.0.0",
       typescript: "^5.8.2",
     },
