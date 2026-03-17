@@ -9,11 +9,14 @@
 - `src/lib/dist.ts` implements plugin packaging (`openvcs dist`).
 - `src/lib/init.ts` implements interactive plugin scaffolding (`openvcs init`).
 - `src/lib/fs-utils.ts` contains file-copy and path safety helpers.
+- `src/lib/runtime/` contains the shared Node plugin runtime, JSON-RPC transport, and delegate dispatcher.
+- `src/lib/types/` contains shared protocol, plugin, host, and VCS contract types.
 - Build outputs go under plugin `dist/` folders.
 
 ## Architecture reference
-- SDK is focused on plugin packaging, not runtime execution.
+- SDK owns plugin packaging plus Node plugin authoring helpers.
 - Bundles follow the `.ovcsp` format as gzip-compressed tar (`tar.gz`) containing `openvcs.plugin.json` plus plugin assets (`bin/`, `entry`, `themes/`, optional `node_modules/`).
+- The canonical host contract still lives in `Client/Backend/src/plugin_runtime/protocol.rs`; SDK runtime/types mirror that contract for plugin authors.
 - Keep manifest fields and bundle structure consistent with host expectations.
 
 ## Build, test, and tooling commands
