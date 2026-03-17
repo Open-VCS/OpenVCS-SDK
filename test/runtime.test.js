@@ -216,3 +216,20 @@ test("bootstrapPluginModule rejects modules without OnPluginStart", async () => 
     /must export OnPluginStart/
   );
 });
+
+test("bootstrapPluginModule rejects when OnPluginStart throws", async () => {
+  await assert.rejects(
+    () =>
+      bootstrapPluginModule({
+        modulePath: "./plugin.js",
+        async importPluginModule() {
+          return {
+            OnPluginStart() {
+              throw new Error("startup failure");
+            },
+          };
+        },
+      }),
+    /plugin startup failed/
+  );
+});

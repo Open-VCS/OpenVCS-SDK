@@ -180,8 +180,8 @@ export function validateGeneratedBootstrapTargets(
   }
 
   resolveDeclaredModuleExecPath(pluginDir, moduleExec);
-  const normalizedExec = moduleExec.trim();
-  if (normalizedExec === AUTHORED_PLUGIN_MODULE_BASENAME) {
+  const normalizedExec = moduleExec.trim().toLowerCase();
+  if (normalizedExec === AUTHORED_PLUGIN_MODULE_BASENAME.toLowerCase()) {
     throw new Error(
       `manifest module.exec must not be ${AUTHORED_PLUGIN_MODULE_BASENAME}; SDK reserves bin/${AUTHORED_PLUGIN_MODULE_BASENAME} for the compiled OnPluginStart module`
     );
@@ -201,9 +201,27 @@ function relativeBinImport(fromExecPath: string, toModulePath: string): string {
   return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
 }
 
+/** Validates that a module import path contains only safe characters for code generation. */
+function validateModuleImportPath(importPath: string): void {
+  if (!/^[./a-zA-Z0-9_-]+$/.test(importPath)) {
+    throw new Error(
+      `unsafe module import path: ${importPath}; path must contain only alphanumeric characters, dots, slashes, hyphens, and underscores`
+    );
+  }
+}
+
 /** Renders the generated Node bootstrap that owns runtime startup. */
-export function renderGeneratedBootstrap(pluginModuleImportPath: string): string {
-  return `#!/usr/bin/env node\n// Copyright © 2025-2026 OpenVCS Contributors\n// SPDX-License-Identifier: GPL-3.0-or-later\n\nimport { bootstrapPluginModule } from '@openvcs/sdk/runtime';\n\nawait bootstrapPluginModule({\n  importPluginModule: async () => import('${pluginModuleImportPath}'),\n  modulePath: '${pluginModuleImportPath}',\n});\n`;
+export function renderGeneratedBootstrap(
+  pluginModuleImportPath: string,
+  isEsm: boolean,
+): string {
+  validateModuleImportPath(pluginModuleImportPath);
+
+  if (isEsm) {
+    return `#!/usr/bin/env node\n// Copyright © 2025-2026 OpenVCS Contributors\n// SPDX-License-Identifier: GPL-3.0-or-later\n\nimport { bootstrapPluginModule } from '@openvcs/sdk/runtime';\n\nawait bootstrapPluginModule({\n  importPluginModule: async () => import('${pluginModuleImportPath}'),\n  modulePath: '${pluginModuleImportPath}',\n});\n`;
+  }
+
+  return `#!/usr/bin/env node\n// Copyright © 2025-2026 OpenVCS Contributors\n// SPDX-License-Identifier: GPL-3.0-or-later\n\n(async () => {\n  const { bootstrapPluginModule } = require('@openvcs/sdk/runtime');\n  await bootstrapPluginModule({\n    importPluginModule: async () => require('${pluginModuleImportPath}'),\n    modulePath: '${pluginModuleImportPath}',\n  });\n})();\n`;
 }
 
 /** Writes the generated SDK-owned module entrypoint under `bin/<module.exec>`. */
@@ -216,9 +234,10 @@ export function generateModuleBootstrap(pluginDir: string, moduleExec: string | 
   const execPath = resolveDeclaredModuleExecPath(pluginDir, moduleExec);
   const pluginModulePath = authoredPluginModulePath(pluginDir);
   const pluginModuleImportPath = relativeBinImport(execPath, pluginModulePath);
+  const isEsm = moduleExec.trim().endsWith(".mjs");
 
   fs.mkdirSync(path.dirname(execPath), { recursive: true });
-  fs.writeFileSync(execPath, renderGeneratedBootstrap(pluginModuleImportPath), "utf8");
+  fs.writeFileSync(execPath, renderGeneratedBootstrap(pluginModuleImportPath, isEsm), "utf8");
 }
 
 /** Returns whether the plugin repository has a `package.json`. */

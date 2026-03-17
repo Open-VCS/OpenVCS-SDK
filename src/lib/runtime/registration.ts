@@ -80,7 +80,13 @@ export async function bootstrapPluginModule(
     );
   }
 
-  await onPluginStart();
+  try {
+    await onPluginStart();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`plugin startup failed: ${message}`);
+  }
+
   const runtime = createRegisteredPluginRuntime(pluginModule.PluginDefinition);
   runtime.start(options.transport);
   return runtime;

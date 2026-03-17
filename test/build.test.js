@@ -12,6 +12,21 @@ const {
 } = require("../lib/build");
 const { cleanupTempDir, makeTempDir, writeJson, writeText } = require("./helpers");
 
+test("renderGeneratedBootstrap creates ESM code", () => {
+  const output = require("../lib/build").renderGeneratedBootstrap("./plugin.js", true);
+  assert.match(output, /^#!/);
+  assert.match(output, /import \{ bootstrapPluginModule \}/);
+  assert.match(output, /import\('\.\/plugin\.js'\)/);
+});
+
+test("renderGeneratedBootstrap creates CJS code", () => {
+  const output = require("../lib/build").renderGeneratedBootstrap("./plugin.js", false);
+  assert.match(output, /^#!/);
+  assert.match(output, /require\('@openvcs\/sdk\/runtime'\)/);
+  assert.match(output, /require\('\.\/plugin\.js'\)/);
+  assert.match(output, /\(\s*async\s*\(\s*\)\s*=>/);
+});
+
 test("parseBuildArgs uses defaults", () => {
   const parsed = parseBuildArgs([]);
   assert.equal(parsed.pluginDir, process.cwd());
@@ -115,6 +130,24 @@ test("validateGeneratedBootstrapTargets rejects module.exec collisions", () => {
 
   assert.throws(
     () => validateGeneratedBootstrapTargets(pluginDir, "plugin.js"),
+    /must not be plugin\.js/
+  );
+
+  cleanupTempDir(root);
+});
+
+test("validateGeneratedBootstrapTargets rejects case-insensitive collisions", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+
+  assert.throws(
+    () => validateGeneratedBootstrapTargets(pluginDir, "Plugin.js"),
+    /must not be plugin\.js/
+  );
+  assert.throws(
+    () => validateGeneratedBootstrapTargets(pluginDir, "PLUGIN.JS"),
     /must not be plugin\.js/
   );
 
