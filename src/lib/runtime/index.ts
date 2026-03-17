@@ -47,17 +47,23 @@ export function createPluginRuntime(
       transport.stdin.on('error', () => {
         process.exit(1);
       });
+      options.onStart?.();
     },
     stop(): void {
       if (!started) {
         return;
       }
       started = false;
-      processing = processing.catch((error: unknown) => {
-        console.error(
-          `[runtime] shutdown error: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      });
+      processing = processing
+        .catch(async (error: unknown) => {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[runtime] shutdown error: ${errorMessage}`);
+          const err = error instanceof Error ? error : new Error(errorMessage);
+          await options.onShutdown?.(err);
+        })
+        .then(async () => {
+          await options.onShutdown?.();
+        });
       currentTransport = null;
     },
     consumeChunk(chunk: Buffer | string): void {
@@ -89,8 +95,11 @@ export function createPluginRuntime(
       const id = request.id;
       const host = createRuntimeHost(currentTransport, options.logTarget);
       const method = asTrimmedString(request.method);
-      if (!method || (typeof id !== 'number' && typeof id !== 'string')) {
-        host.error(`invalid request: method=${JSON.stringify(method)}, id=${JSON.stringify(id)}`);
+      const validationErrors: string[] = [];
+      if (!method) validationErrors.push('missing method');
+      if (typeof id !== 'number' && typeof id !== 'string') validationErrors.push(`invalid id type: ${typeof id}`);
+      if (validationErrors.length > 0) {
+        host.error(`invalid request: ${validationErrors.join(', ')}`);
         return;
       }
       const dispatcher = createRuntimeDispatcher(options, host, {
@@ -114,8 +123,10 @@ export function createPluginRuntime(
         },
       });
 
+      const methodName = method as string;
       const params = asRecord(request.params) ?? {};
-      await dispatcher(id, method, params);
+      const requestId = id as JsonRpcId;
+      await dispatcher(requestId, methodName, params);
     },
   };
 

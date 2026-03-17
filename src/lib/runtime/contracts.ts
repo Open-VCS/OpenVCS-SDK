@@ -33,6 +33,10 @@ export interface CreatePluginRuntimeOptions {
   logTarget?: string;
   /** Stores the timeout in milliseconds for request handlers. */
   timeout?: number;
+  /** Called when runtime starts and begins processing requests. */
+  onStart?: () => void | Promise<void>;
+  /** Called during stop() after pending operations complete. Called with error if shutdown due to processing error. */
+  onShutdown?: (error?: Error) => void | Promise<void>;
 }
 
 /** Describes one created SDK plugin runtime instance. */
