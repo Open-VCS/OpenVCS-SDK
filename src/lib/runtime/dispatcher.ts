@@ -3,6 +3,7 @@
 
 import {
   PLUGIN_INTERNAL_ERROR_CODE,
+  PLUGIN_FAILURE_CODE,
   PROTOCOL_VERSION,
 } from '../types';
 import type {
@@ -78,6 +79,7 @@ export function createRuntimeDispatcher(
   const pluginDelegates = options.plugin ?? {};
   const vcsDelegates = options.vcs ?? {};
   const runtimeImplements = buildRuntimeImplements(options.implements, options.vcs);
+  const timeout = options.timeout;
   const typedPluginDelegates = pluginDelegates as Record<
     string,
     RpcMethodHandler<RequestParams, unknown, PluginRuntimeContext> | undefined
@@ -94,6 +96,15 @@ export function createRuntimeDispatcher(
   return async (id: JsonRpcId, method: string, params: RequestParams): Promise<void> => {
     try {
       if (method === 'plugin.initialize') {
+        const expectedVersion = params.expected_protocol_version;
+        if (typeof expectedVersion === 'number' && expectedVersion !== PROTOCOL_VERSION) {
+          writer.sendError(id, PLUGIN_FAILURE_CODE, 'protocol version mismatch', {
+            code: 'protocol-version-mismatch',
+            message: `host expects protocol ${expectedVersion}, plugin supports ${PROTOCOL_VERSION}`,
+          });
+          return;
+        }
+
         const override = pluginDelegates['plugin.initialize']
           ? await pluginDelegates['plugin.initialize'](params, {
               host,
@@ -120,11 +131,31 @@ export function createRuntimeDispatcher(
         throw pluginError('rpc-method-not-found', `method '${method}' is not implemented`);
       }
 
-      const result = await handler(params, {
-        host,
-        requestId: id,
-        method,
-      });
+      let result: unknown;
+      if (timeout && timeout > 0) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        try {
+          result = await handler(params, {
+            host,
+            requestId: id,
+            method,
+          });
+        } catch (error) {
+          clearTimeout(timeoutId);
+          if ((error as Error).name === 'AbortError') {
+            throw pluginError('request-timeout', `method '${method}' timed out after ${timeout}ms`);
+          }
+          throw error;
+        }
+        clearTimeout(timeoutId);
+      } else {
+        result = await handler(params, {
+          host,
+          requestId: id,
+          method,
+        });
+      }
       writer.sendResult(id, result == null ? null : result);
     } catch (error) {
       if (isPluginFailure(error)) {

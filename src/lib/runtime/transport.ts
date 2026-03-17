@@ -23,7 +23,17 @@ export function writeFramedMessage(
   writer: NodeJS.WritableStream,
   value: unknown,
 ): void {
-  writer.write(serializeFramedMessage(value));
+  try {
+    const serialized = serializeFramedMessage(value);
+    const canContinue = writer.write(serialized);
+    if (!canContinue) {
+      writer.once('drain', () => {});
+    }
+  } catch (error) {
+    console.error(
+      `[transport] failed to write framed message: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 /** Parses all complete framed JSON-RPC requests currently present in a buffer. */

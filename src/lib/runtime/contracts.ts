@@ -31,12 +31,16 @@ export interface CreatePluginRuntimeOptions {
   implements?: Partial<PluginImplements>;
   /** Stores the `host.log` target emitted by the runtime. */
   logTarget?: string;
+  /** Stores the timeout in milliseconds for request handlers. */
+  timeout?: number;
 }
 
 /** Describes one created SDK plugin runtime instance. */
 export interface PluginRuntime {
   /** Starts listening on stdio for framed JSON-RPC requests. */
   start(transport?: PluginRuntimeTransport): void;
+  /** Stops the runtime and cleans up pending operations. */
+  stop(): void;
   /** Consumes one raw stdio chunk and dispatches complete requests. */
   consumeChunk(chunk: Buffer | string): void;
   /** Dispatches one already-decoded JSON-RPC request. */

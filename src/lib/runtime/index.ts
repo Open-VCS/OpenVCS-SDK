@@ -6,6 +6,7 @@ import type { JsonRpcId, JsonRpcRequest, RequestParams } from '../types';
 import type {
   CreatePluginRuntimeOptions,
   PluginRuntime,
+  PluginRuntimeContext,
   PluginRuntimeTransport,
 } from './contracts';
 import { createRuntimeDispatcher } from './dispatcher';
@@ -30,6 +31,7 @@ export function createPluginRuntime(
   let processing: Promise<void> = Promise.resolve();
   let started = false;
   let currentTransport: PluginRuntimeTransport | null = null;
+  let chunkLock: Promise<void> = Promise.resolve();
 
   const runtime: PluginRuntime = {
     start(transport: PluginRuntimeTransport = defaultTransport()): void {
@@ -46,27 +48,46 @@ export function createPluginRuntime(
         process.exit(1);
       });
     },
-    consumeChunk(chunk: Buffer | string): void {
-      buffer = Buffer.concat([buffer, normalizeChunk(chunk)]);
-      const parsed = parseFramedMessages(buffer);
-      buffer = parsed.remainder;
-
-      for (const request of parsed.messages) {
-        processing = processing
-          .then(async () => {
-            await runtime.dispatchRequest(request);
-          })
-          .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : String(error || 'unknown plugin processing error');
-            const host = createRuntimeHost(currentTransport, options.logTarget);
-            host.error(message);
-          });
+    stop(): void {
+      if (!started) {
+        return;
       }
+      started = false;
+      processing = processing.catch(() => {});
+      currentTransport = null;
+    },
+    consumeChunk(chunk: Buffer | string): void {
+      if (!started) {
+        return;
+      }
+
+      const lock = chunkLock.then(() => {
+        buffer = Buffer.concat([buffer, normalizeChunk(chunk)]);
+        const parsed = parseFramedMessages(buffer);
+        buffer = parsed.remainder;
+
+        for (const request of parsed.messages) {
+          processing = processing
+            .then(async () => {
+              await runtime.dispatchRequest(request);
+            })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error || 'unknown plugin processing error');
+              const host = createRuntimeHost(currentTransport, options.logTarget);
+              host.error(message);
+            });
+        }
+      });
+
+      chunkLock = lock;
     },
     async dispatchRequest(request: JsonRpcRequest): Promise<void> {
       const id = request.id;
       const method = asTrimmedString(request.method);
       if (!method || (typeof id !== 'number' && typeof id !== 'string')) {
+        console.debug(
+          `[runtime] invalid request: method=${JSON.stringify(method)}, id=${JSON.stringify(id)}`,
+        );
         return;
       }
 
@@ -92,7 +113,8 @@ export function createPluginRuntime(
         },
       });
 
-      await dispatcher(id, method, asRecord(request.params));
+      const params = asRecord(request.params);
+      await dispatcher(id, method, params);
     },
   };
 
@@ -140,18 +162,25 @@ function createRuntimeHost(
   );
 }
 
-/** Returns a plain object parameter map or an empty object for invalid input. */
-function asRecord(value: unknown): RequestParams {
+/** Type guard that returns true if the value is a valid RequestParams object. */
+function isRequestParams(value: unknown): value is RequestParams {
   if (value == null || typeof value !== 'object' || Array.isArray(value)) {
-    return {};
+    return false;
   }
-
-  return value as RequestParams;
+  return true;
 }
 
 /** Coerces unknown request method values into trimmed strings. */
 function asTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : String(value ?? '').trim();
+}
+
+/** Coerces unknown params to a Record, returning empty object for invalid input. */
+function asRecord(value: unknown): Record<string, unknown> {
+  if (isRequestParams(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {} as Record<string, unknown>;
 }
 
 /** Normalizes incoming data chunks to UTF-8 buffers. */
