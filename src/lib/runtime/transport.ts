@@ -25,10 +25,7 @@ export function writeFramedMessage(
 ): void {
   try {
     const serialized = serializeFramedMessage(value);
-    const canContinue = writer.write(serialized);
-    if (!canContinue) {
-      writer.once('drain', () => {});
-    }
+    writer.write(serialized);
   } catch (error) {
     console.error(
       `[transport] failed to write framed message: ${error instanceof Error ? error.message : String(error)}`,

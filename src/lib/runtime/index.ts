@@ -113,7 +113,7 @@ export function createPluginRuntime(
         },
       });
 
-      const params = asRecord(request.params);
+      const params = asRecord(request.params) ?? {};
       await dispatcher(id, method, params);
     },
   };
@@ -175,12 +175,12 @@ function asTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : String(value ?? '').trim();
 }
 
-/** Coerces unknown params to a Record, returning empty object for invalid input. */
-function asRecord(value: unknown): Record<string, unknown> {
+/** Coerces unknown params to a Record, returning null for invalid input. */
+function asRecord(value: unknown): Record<string, unknown> | null {
   if (isRequestParams(value)) {
     return value as Record<string, unknown>;
   }
-  return {} as Record<string, unknown>;
+  return null;
 }
 
 /** Normalizes incoming data chunks to UTF-8 buffers. */
