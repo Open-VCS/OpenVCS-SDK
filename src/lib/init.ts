@@ -279,7 +279,7 @@ function writeThemeTemplate(answers: InitAnswers): void {
       dist: "openvcs dist --plugin-dir . --out dist",
       test: "openvcs dist --plugin-dir . --out dist --no-build --no-npm-deps",
     },
-    devDependencies: {
+    dependencies: {
       "@openvcs/sdk": `^${packageJson.version}`,
     },
   });
