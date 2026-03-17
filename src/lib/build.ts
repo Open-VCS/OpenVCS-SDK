@@ -234,10 +234,26 @@ export function generateModuleBootstrap(pluginDir: string, moduleExec: string | 
   const execPath = resolveDeclaredModuleExecPath(pluginDir, moduleExec);
   const pluginModulePath = authoredPluginModulePath(pluginDir);
   const pluginModuleImportPath = relativeBinImport(execPath, pluginModulePath);
-  const isEsm = moduleExec.trim().endsWith(".mjs");
+  const isEsm = detectEsmMode(pluginDir, moduleExec);
 
   fs.mkdirSync(path.dirname(execPath), { recursive: true });
   fs.writeFileSync(execPath, renderGeneratedBootstrap(pluginModuleImportPath, isEsm), "utf8");
+}
+
+/** Detects whether the plugin runs in ESM mode based on package.json or file extension. */
+function detectEsmMode(pluginDir: string, moduleExec: string): boolean {
+  const packageJsonPath = path.join(pluginDir, "package.json");
+  if (fs.existsSync(packageJsonPath) && fs.lstatSync(packageJsonPath).isFile()) {
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+      if (packageJson.type === "module") {
+        return true;
+      }
+    } catch {
+      // Ignore JSON parse errors
+    }
+  }
+  return moduleExec.trim().endsWith(".mjs");
 }
 
 /** Returns whether the plugin repository has a `package.json`. */

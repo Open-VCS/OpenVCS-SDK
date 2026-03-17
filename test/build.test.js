@@ -27,6 +27,11 @@ test("renderGeneratedBootstrap creates CJS code", () => {
   assert.match(output, /\(\s*async\s*\(\s*\)\s*=>/);
 });
 
+test("renderGeneratedBootstrap handles subdirectory import paths", () => {
+  const output = require("../lib/build").renderGeneratedBootstrap("./subdir/plugin.js", true);
+  assert.match(output, /import\('\.\/subdir\/plugin\.js'\)/);
+});
+
 test("parseBuildArgs uses defaults", () => {
   const parsed = parseBuildArgs([]);
   assert.equal(parsed.pluginDir, process.cwd());
