@@ -158,3 +158,79 @@ test("validateGeneratedBootstrapTargets rejects case-insensitive collisions", ()
 
   cleanupTempDir(root);
 });
+
+test("generateModuleBootstrap handles subdirectory module.exec paths", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "subdir-plugin",
+    module: { exec: "subdir/openvcs-plugin.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "subdir-plugin",
+    type: "module",
+    private: true,
+    scripts: { "build:plugin": "node ./scripts/build.js" },
+  });
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "subdir", "openvcs-plugin.js"), "export {};\n");
+
+  const { generateModuleBootstrap } = require("../lib/build");
+  generateModuleBootstrap(pluginDir, "subdir/openvcs-plugin.js");
+
+  const bootstrapContent = fs.readFileSync(
+    path.join(pluginDir, "bin", "subdir", "openvcs-plugin.js"),
+    "utf8"
+  );
+  assert.match(bootstrapContent, /\.\.\/plugin\.js/);
+  cleanupTempDir(root);
+});
+
+test("detectEsmMode returns true for package.json type: module", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "esm-plugin",
+    module: { exec: "bootstrap.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "esm-plugin",
+    type: "module",
+  });
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "bootstrap.js"), "export {};\n");
+
+  const { generateModuleBootstrap } = require("../lib/build");
+  generateModuleBootstrap(pluginDir, "bootstrap.js");
+
+  const bootstrapContent = fs.readFileSync(path.join(pluginDir, "bin", "bootstrap.js"), "utf8");
+  assert.match(bootstrapContent, /^#!/);
+  assert.match(bootstrapContent, /^import\s*{/m);
+  cleanupTempDir(root);
+});
+
+test("detectEsmMode returns false for package.json type: commonjs", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "cjs-plugin",
+    module: { exec: "bootstrap.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "cjs-plugin",
+    type: "commonjs",
+  });
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "bootstrap.js"), "export {};\n");
+
+  const { generateModuleBootstrap } = require("../lib/build");
+  generateModuleBootstrap(pluginDir, "bootstrap.js");
+
+  const bootstrapContent = fs.readFileSync(path.join(pluginDir, "bin", "bootstrap.js"), "utf8");
+  assert.match(bootstrapContent, /require\(/);
+  assert.match(bootstrapContent, /\(\s*async\s*\(\s*\)\s*=>/);
+  cleanupTempDir(root);
+});

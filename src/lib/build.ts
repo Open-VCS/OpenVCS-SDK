@@ -227,6 +227,7 @@ export function renderGeneratedBootstrap(
 /** Writes the generated SDK-owned module entrypoint under `bin/<module.exec>`. */
 export function generateModuleBootstrap(pluginDir: string, moduleExec: string | undefined): void {
   if (!moduleExec) {
+    console.debug(`generateModuleBootstrap: no module.exec defined, skipping bootstrap generation for ${pluginDir}`);
     return;
   }
 
