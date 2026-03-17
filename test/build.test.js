@@ -3,8 +3,34 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const { buildPluginAssets, parseBuildArgs, readManifest, validateDeclaredModuleExec } = require("../lib/build");
+const {
+  buildPluginAssets,
+  parseBuildArgs,
+  readManifest,
+  validateDeclaredModuleExec,
+  validateGeneratedBootstrapTargets,
+} = require("../lib/build");
 const { cleanupTempDir, makeTempDir, writeJson, writeText } = require("./helpers");
+
+test("renderGeneratedBootstrap creates ESM code", () => {
+  const output = require("../lib/build").renderGeneratedBootstrap("./plugin.js", true);
+  assert.match(output, /^#!/);
+  assert.match(output, /import \{ bootstrapPluginModule \}/);
+  assert.match(output, /import\('\.\/plugin\.js'\)/);
+});
+
+test("renderGeneratedBootstrap creates CJS code", () => {
+  const output = require("../lib/build").renderGeneratedBootstrap("./plugin.js", false);
+  assert.match(output, /^#!/);
+  assert.match(output, /require\('@openvcs\/sdk\/runtime'\)/);
+  assert.match(output, /require\('\.\/plugin\.js'\)/);
+  assert.match(output, /\(\s*async\s*\(\s*\)\s*=>/);
+});
+
+test("renderGeneratedBootstrap handles subdirectory import paths", () => {
+  const output = require("../lib/build").renderGeneratedBootstrap("./subdir/plugin.js", true);
+  assert.match(output, /import\('\.\/subdir\/plugin\.js'\)/);
+});
 
 test("parseBuildArgs uses defaults", () => {
   const parsed = parseBuildArgs([]);
@@ -39,7 +65,7 @@ test("buildPluginAssets requires package.json for code plugins", () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "missing-package",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
 
   assert.throws(
@@ -56,7 +82,7 @@ test("buildPluginAssets runs build:plugin and validates output", () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "builder",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "builder",
@@ -74,6 +100,11 @@ test("buildPluginAssets runs build:plugin and validates output", () => {
 
   assert.equal(manifest.pluginId, "builder");
   assert.equal(fs.existsSync(path.join(pluginDir, "bin", "plugin.js")), true);
+  assert.equal(fs.existsSync(path.join(pluginDir, "bin", "openvcs-plugin.js")), true);
+  assert.match(
+    fs.readFileSync(path.join(pluginDir, "bin", "openvcs-plugin.js"), "utf8"),
+    /bootstrapPluginModule/
+  );
   cleanupTempDir(root);
 });
 
@@ -83,13 +114,123 @@ test("readManifest and validateDeclaredModuleExec stay reusable", () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "reusable",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
 
   const manifest = readManifest(pluginDir);
-  assert.equal(manifest.moduleExec, "plugin.js");
+  assert.equal(manifest.moduleExec, "openvcs-plugin.js");
+  assert.doesNotThrow(() => validateGeneratedBootstrapTargets(pluginDir, manifest.moduleExec));
   assert.doesNotThrow(() => validateDeclaredModuleExec(pluginDir, manifest.moduleExec));
 
+  cleanupTempDir(root);
+});
+
+test("validateGeneratedBootstrapTargets rejects module.exec collisions", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+
+  assert.throws(
+    () => validateGeneratedBootstrapTargets(pluginDir, "plugin.js"),
+    /must not be plugin\.js/
+  );
+
+  cleanupTempDir(root);
+});
+
+test("validateGeneratedBootstrapTargets rejects case-insensitive collisions", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+
+  assert.throws(
+    () => validateGeneratedBootstrapTargets(pluginDir, "Plugin.js"),
+    /must not be plugin\.js/
+  );
+  assert.throws(
+    () => validateGeneratedBootstrapTargets(pluginDir, "PLUGIN.JS"),
+    /must not be plugin\.js/
+  );
+
+  cleanupTempDir(root);
+});
+
+test("generateModuleBootstrap handles subdirectory module.exec paths", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "subdir-plugin",
+    module: { exec: "subdir/openvcs-plugin.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "subdir-plugin",
+    type: "module",
+    private: true,
+    scripts: { "build:plugin": "node ./scripts/build.js" },
+  });
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "subdir", "openvcs-plugin.js"), "export {};\n");
+
+  const { generateModuleBootstrap } = require("../lib/build");
+  generateModuleBootstrap(pluginDir, "subdir/openvcs-plugin.js");
+
+  const bootstrapContent = fs.readFileSync(
+    path.join(pluginDir, "bin", "subdir", "openvcs-plugin.js"),
+    "utf8"
+  );
+  assert.match(bootstrapContent, /\.\.\/plugin\.js/);
+  cleanupTempDir(root);
+});
+
+test("detectEsmMode returns true for package.json type: module", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "esm-plugin",
+    module: { exec: "bootstrap.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "esm-plugin",
+    type: "module",
+  });
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "bootstrap.js"), "export {};\n");
+
+  const { generateModuleBootstrap } = require("../lib/build");
+  generateModuleBootstrap(pluginDir, "bootstrap.js");
+
+  const bootstrapContent = fs.readFileSync(path.join(pluginDir, "bin", "bootstrap.js"), "utf8");
+  assert.match(bootstrapContent, /^#!/);
+  assert.match(bootstrapContent, /^import\s*{/m);
+  cleanupTempDir(root);
+});
+
+test("detectEsmMode returns false for package.json type: commonjs", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
+    id: "cjs-plugin",
+    module: { exec: "bootstrap.js" },
+  });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "cjs-plugin",
+    type: "commonjs",
+  });
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "bootstrap.js"), "export {};\n");
+
+  const { generateModuleBootstrap } = require("../lib/build");
+  generateModuleBootstrap(pluginDir, "bootstrap.js");
+
+  const bootstrapContent = fs.readFileSync(path.join(pluginDir, "bin", "bootstrap.js"), "utf8");
+  assert.match(bootstrapContent, /require\(/);
+  assert.match(bootstrapContent, /\(\s*async\s*\(\s*\)\s*=>/);
   cleanupTempDir(root);
 });

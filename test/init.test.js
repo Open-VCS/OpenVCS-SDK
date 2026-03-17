@@ -81,9 +81,13 @@ test("writeModuleTemplate scaffolds SDK runtime entrypoint", () => {
   });
 
   const pluginSource = fs.readFileSync(path.join(targetDir, "src", "plugin.ts"), "utf8");
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(targetDir, "openvcs.plugin.json"), "utf8")
+  );
 
-  assert.match(pluginSource, /createPluginRuntime/);
-  assert.match(pluginSource, /startPluginRuntime/);
+  assert.equal(manifest.module.exec, "openvcs-plugin.js");
+  assert.match(pluginSource, /OnPluginStart/);
+  assert.match(pluginSource, /PluginDefinition/);
   assert.match(pluginSource, /context\.host\.info\('OpenVCS plugin started'\)/);
 
   cleanupTempDir(root);

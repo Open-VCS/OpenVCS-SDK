@@ -63,32 +63,34 @@ The generated module template includes TypeScript and Node typings (`@types/node
 Plugin IDs entered during scaffold must not be `.`/`..` and must not contain path
 separators (`/` or `\\`).
 
-Generated module plugins now start with a working SDK runtime entrypoint:
+Generated module plugins now export a declarative `PluginDefinition` plus an
+`OnPluginStart()` hook that the SDK-owned bootstrap calls for them:
 
 ```ts
-import { createPluginRuntime, startPluginRuntime } from '@openvcs/sdk/runtime';
+import type { PluginModuleDefinition } from '@openvcs/sdk/runtime';
 
-const runtime = createPluginRuntime({
+export const PluginDefinition: PluginModuleDefinition = {
   plugin: {
     async 'plugin.init'(_params, context) {
       context.host.info('OpenVCS plugin started');
       return null;
     },
   },
-});
+};
 
-startPluginRuntime(runtime);
+export function OnPluginStart(): void {}
 ```
 
 Runtime and protocol imports are exposed as npm subpaths:
 
 ```ts
-import { createPluginRuntime, pluginError } from '@openvcs/sdk/runtime';
+import { pluginError } from '@openvcs/sdk/runtime';
 import type { PluginDelegates, VcsDelegates } from '@openvcs/sdk/types';
 ```
 
 The runtime handles stdio framing, JSON-RPC request dispatch, host notifications,
-default `plugin.*` handlers, and exact-method delegate registration for `vcs.*`.
+default `plugin.*` handlers, exact-method delegate registration for `vcs.*`, and
+the generated `bin/<module.exec>` bootstrap created by `openvcs build`.
 
 Interactive theme plugin scaffold:
 
@@ -104,8 +106,10 @@ In a generated code plugin folder:
 npm run build
 ```
 
-This runs `openvcs build`, which executes `scripts["build:plugin"]` and verifies
-that `bin/<module.exec>` now exists.
+This runs `openvcs build`, which executes `scripts["build:plugin"]`, expects your
+compiled plugin author module at `bin/plugin.js`, and then generates the SDK-owned
+`bin/<module.exec>` bootstrap that imports `./plugin.js`, applies `PluginDefinition`,
+invokes `OnPluginStart()`, and starts the runtime.
 
 Theme-only plugins can also run `npm run build`; the command exits successfully
 without producing `bin/` output.
@@ -134,6 +138,9 @@ Generated code plugin scripts use this split by default:
   }
 }
 ```
+
+For code plugins, reserve `bin/plugin.js` for the compiled author module and point
+`module.exec` at a different bootstrap filename such as `openvcs-plugin.js`.
 
 `.ovcsp` is a gzip-compressed tar archive (`tar.gz`) that contains a top-level
 `<plugin-id>/` directory with `openvcs.plugin.json` and plugin runtime assets.
