@@ -223,7 +223,7 @@ function writeCommonFiles(answers: InitAnswers): void {
     name: answers.pluginName,
     version: answers.pluginVersion,
     default_enabled: answers.defaultEnabled,
-    ...(answers.kind === "module" ? { module: { exec: "plugin.js" } } : {}),
+    ...(answers.kind === "module" ? { module: { exec: "openvcs-plugin.js" } } : {}),
   });
   writeText(path.join(answers.targetDir, ".gitignore"), "node_modules/\ndist/\n");
 }
@@ -264,7 +264,7 @@ function writeModuleTemplate(answers: InitAnswers): void {
   });
   writeText(
     path.join(answers.targetDir, "src", "plugin.ts"),
-    "// Copyright © 2025-2026 OpenVCS Contributors\n// SPDX-License-Identifier: GPL-3.0-or-later\n\nimport { createPluginRuntime, startPluginRuntime } from '@openvcs/sdk/runtime';\n\nconst runtime = createPluginRuntime({\n  plugin: {\n    async 'plugin.init'(_params, context) {\n      context.host.info('OpenVCS plugin started');\n      return null;\n    },\n  },\n});\n\nstartPluginRuntime(runtime);\n"
+    "// Copyright © 2025-2026 OpenVCS Contributors\n// SPDX-License-Identifier: GPL-3.0-or-later\n\nimport type { PluginModuleDefinition } from '@openvcs/sdk/runtime';\n\nexport const PluginDefinition: PluginModuleDefinition = {\n  plugin: {\n    async 'plugin.init'(_params, context) {\n      context.host.info('OpenVCS plugin started');\n      return null;\n    },\n  },\n};\n\n/** Runs plugin startup work before the generated runtime begins processing requests. */\nexport function OnPluginStart(): void {}\n"
   );
 }
 

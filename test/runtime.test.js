@@ -2,7 +2,10 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const test = require("node:test");
 
-const { createPluginRuntime } = require("../lib/runtime");
+const {
+  bootstrapPluginModule,
+  createPluginRuntime,
+} = require("../lib/runtime");
 const {
   parseFramedMessages,
   serializeFramedMessage,
@@ -115,4 +118,118 @@ test("createPluginRuntime reports missing methods as plugin failures", async () 
       },
     },
   ]);
+});
+
+test("bootstrapPluginModule runs OnPluginStart before starting runtime", async () => {
+  const stdin = new EventEmitter();
+  const chunks = [];
+  const stdout = {
+    write(chunk) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      return true;
+    },
+  };
+
+  await bootstrapPluginModule({
+    modulePath: "./plugin.js",
+    transport: { stdin, stdout },
+    async importPluginModule() {
+      return {
+        PluginDefinition: {
+          plugin: {
+            async "plugin.init"(_params, context) {
+              context.host.info("booted");
+              return null;
+            },
+          },
+          vcs: {
+            async "vcs.get_caps"() {
+              return { commits: true };
+            },
+          },
+        },
+        OnPluginStart() {
+        },
+      };
+    },
+  });
+
+  stdin.emit(
+    "data",
+    serializeFramedMessage({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "plugin.initialize",
+      params: {},
+    })
+  );
+  stdin.emit(
+    "data",
+    serializeFramedMessage({
+      jsonrpc: "2.0",
+      id: 5,
+      method: "plugin.init",
+      params: {},
+    })
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const parsed = parseFramedMessages(Buffer.concat(chunks));
+  assert.deepEqual(parsed.messages, [
+    {
+      jsonrpc: "2.0",
+      id: 4,
+      result: {
+        protocol_version: 1,
+        implements: {
+          plugin: true,
+          vcs: true,
+        },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      method: "host.log",
+      params: {
+        level: "info",
+        target: "openvcs.plugin",
+        message: "booted",
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 5,
+      result: null,
+    },
+  ]);
+});
+
+test("bootstrapPluginModule rejects modules without OnPluginStart", async () => {
+  await assert.rejects(
+    () =>
+      bootstrapPluginModule({
+        modulePath: "./plugin.js",
+        async importPluginModule() {
+          return {};
+        },
+      }),
+    /must export OnPluginStart/
+  );
+});
+
+test("bootstrapPluginModule rejects when OnPluginStart throws", async () => {
+  await assert.rejects(
+    () =>
+      bootstrapPluginModule({
+        modulePath: "./plugin.js",
+        async importPluginModule() {
+          return {
+            OnPluginStart() {
+              throw new Error("startup failure");
+            },
+          };
+        },
+      }),
+    /plugin startup failed/
+  );
 });

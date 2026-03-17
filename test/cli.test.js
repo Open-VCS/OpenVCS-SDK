@@ -67,9 +67,10 @@ test("openvcs dist command creates bundle", () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "cli-plugin",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
 
   const result = runCli([
     "dist",
@@ -100,7 +101,7 @@ test("openvcs build command builds code plugin assets", () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "build-plugin",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "build-plugin",
@@ -119,6 +120,7 @@ test("openvcs build command builds code plugin assets", () => {
   assert.equal(result.status, 0);
   assert.equal(result.stdout.trim(), "build-plugin");
   assert.equal(fs.existsSync(path.join(pluginDir, "bin", "plugin.js")), true);
+  assert.equal(fs.existsSync(path.join(pluginDir, "bin", "openvcs-plugin.js")), true);
 
   cleanupTempDir(root);
 });

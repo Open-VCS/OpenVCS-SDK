@@ -32,6 +32,8 @@ interface PackageScripts {
   [scriptName: string]: unknown;
 }
 
+const AUTHORED_PLUGIN_MODULE_BASENAME = "plugin.js";
+
 /** Returns the npm executable name for the current platform. */
 export function npmExecutable(): string {
   return process.platform === "win32" ? "npm.cmd" : "npm";
@@ -137,6 +139,14 @@ export function validateDeclaredModuleExec(pluginDir: string, moduleExec: string
     return;
   }
 
+  const targetPath = resolveDeclaredModuleExecPath(pluginDir, moduleExec);
+  if (!fs.existsSync(targetPath) || !fs.lstatSync(targetPath).isFile()) {
+    throw new Error(`module entrypoint not found at ${targetPath}`);
+  }
+}
+
+/** Resolves `module.exec` to an absolute path under `bin/`, rejecting invalid targets. */
+function resolveDeclaredModuleExecPath(pluginDir: string, moduleExec: string): string {
   const normalizedExec = moduleExec.trim();
   const lowered = normalizedExec.toLowerCase();
   if (!lowered.endsWith(".js") && !lowered.endsWith(".mjs") && !lowered.endsWith(".cjs")) {
@@ -151,9 +161,100 @@ export function validateDeclaredModuleExec(pluginDir: string, moduleExec: string
   if (!isPathInside(binDir, targetPath) || targetPath === binDir) {
     throw new Error(`manifest module.exec must point to a file under bin/: ${moduleExec}`);
   }
-  if (!fs.existsSync(targetPath) || !fs.lstatSync(targetPath).isFile()) {
-    throw new Error(`module entrypoint not found at ${targetPath}`);
+
+  return targetPath;
+}
+
+/** Returns the compiled plugin module path imported by the generated bootstrap. */
+export function authoredPluginModulePath(pluginDir: string): string {
+  return path.resolve(pluginDir, "bin", AUTHORED_PLUGIN_MODULE_BASENAME);
+}
+
+/** Ensures the plugin's authored module and generated bootstrap paths are compatible. */
+export function validateGeneratedBootstrapTargets(
+  pluginDir: string,
+  moduleExec: string | undefined,
+): void {
+  if (!moduleExec) {
+    return;
   }
+
+  resolveDeclaredModuleExecPath(pluginDir, moduleExec);
+  const normalizedExec = moduleExec.trim().toLowerCase();
+  if (normalizedExec === AUTHORED_PLUGIN_MODULE_BASENAME.toLowerCase()) {
+    throw new Error(
+      `manifest module.exec must not be ${AUTHORED_PLUGIN_MODULE_BASENAME}; SDK reserves bin/${AUTHORED_PLUGIN_MODULE_BASENAME} for the compiled OnPluginStart module`
+    );
+  }
+
+  const authoredModulePath = authoredPluginModulePath(pluginDir);
+  if (!fs.existsSync(authoredModulePath) || !fs.lstatSync(authoredModulePath).isFile()) {
+    throw new Error(
+      `compiled plugin module not found at ${authoredModulePath}; build:plugin must emit bin/${AUTHORED_PLUGIN_MODULE_BASENAME}`
+    );
+  }
+}
+
+/** Returns a normalized import specifier from one bin file to another. */
+function relativeBinImport(fromExecPath: string, toModulePath: string): string {
+  const relativePath = path.relative(path.dirname(fromExecPath), toModulePath).replace(/\\/g, "/");
+  return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
+}
+
+/** Validates that a module import path contains only safe characters for code generation. */
+function validateModuleImportPath(importPath: string): void {
+  if (!/^[./a-zA-Z0-9_-]+$/.test(importPath)) {
+    throw new Error(
+      `unsafe module import path: ${importPath}; path must contain only alphanumeric characters, dots, slashes, hyphens, and underscores`
+    );
+  }
+}
+
+/** Renders the generated Node bootstrap that owns runtime startup. */
+export function renderGeneratedBootstrap(
+  pluginModuleImportPath: string,
+  isEsm: boolean,
+): string {
+  validateModuleImportPath(pluginModuleImportPath);
+
+  if (isEsm) {
+    return `#!/usr/bin/env node\n// Copyright © 2025-2026 OpenVCS Contributors\n// SPDX-License-Identifier: GPL-3.0-or-later\n\nimport { bootstrapPluginModule } from '@openvcs/sdk/runtime';\n\nawait bootstrapPluginModule({\n  importPluginModule: async () => import('${pluginModuleImportPath}'),\n  modulePath: '${pluginModuleImportPath}',\n});\n`;
+  }
+
+  return `#!/usr/bin/env node\n// Copyright © 2025-2026 OpenVCS Contributors\n// SPDX-License-Identifier: GPL-3.0-or-later\n\n(async () => {\n  const { bootstrapPluginModule } = require('@openvcs/sdk/runtime');\n  await bootstrapPluginModule({\n    importPluginModule: async () => require('${pluginModuleImportPath}'),\n    modulePath: '${pluginModuleImportPath}',\n  });\n})();\n`;
+}
+
+/** Writes the generated SDK-owned module entrypoint under `bin/<module.exec>`. */
+export function generateModuleBootstrap(pluginDir: string, moduleExec: string | undefined): void {
+  if (!moduleExec) {
+    console.debug(`generateModuleBootstrap: no module.exec defined, skipping bootstrap generation for ${pluginDir}`);
+    return;
+  }
+
+  validateGeneratedBootstrapTargets(pluginDir, moduleExec);
+  const execPath = resolveDeclaredModuleExecPath(pluginDir, moduleExec);
+  const pluginModulePath = authoredPluginModulePath(pluginDir);
+  const pluginModuleImportPath = relativeBinImport(execPath, pluginModulePath);
+  const isEsm = detectEsmMode(pluginDir, moduleExec);
+
+  fs.mkdirSync(path.dirname(execPath), { recursive: true });
+  fs.writeFileSync(execPath, renderGeneratedBootstrap(pluginModuleImportPath, isEsm), "utf8");
+}
+
+/** Detects whether the plugin runs in ESM mode based on package.json or file extension. */
+function detectEsmMode(pluginDir: string, moduleExec: string): boolean {
+  const packageJsonPath = path.join(pluginDir, "package.json");
+  if (fs.existsSync(packageJsonPath) && fs.lstatSync(packageJsonPath).isFile()) {
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+      if (packageJson.type === "module") {
+        return true;
+      }
+    } catch {
+      // Ignore JSON parse errors
+    }
+  }
+  return moduleExec.trim().endsWith(".mjs");
 }
 
 /** Returns whether the plugin repository has a `package.json`. */
@@ -224,6 +325,7 @@ export function buildPluginAssets(parsedArgs: BuildArgs): ManifestInfo {
   }
 
   runCommand(npmExecutable(), ["run", "build:plugin"], parsedArgs.pluginDir, parsedArgs.verbose);
+  generateModuleBootstrap(parsedArgs.pluginDir, manifest.moduleExec);
   validateDeclaredModuleExec(parsedArgs.pluginDir, manifest.moduleExec);
   return manifest;
 }
