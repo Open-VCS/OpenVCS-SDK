@@ -53,7 +53,11 @@ export function createPluginRuntime(
         return;
       }
       started = false;
-      processing = processing.catch(() => {});
+      processing = processing.catch((error: unknown) => {
+        console.error(
+          `[runtime] shutdown error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
       currentTransport = null;
     },
     consumeChunk(chunk: Buffer | string): void {
@@ -83,25 +87,22 @@ export function createPluginRuntime(
     },
     async dispatchRequest(request: JsonRpcRequest): Promise<void> {
       const id = request.id;
+      const host = createRuntimeHost(currentTransport, options.logTarget);
       const method = asTrimmedString(request.method);
       if (!method || (typeof id !== 'number' && typeof id !== 'string')) {
-        console.debug(
-          `[runtime] invalid request: method=${JSON.stringify(method)}, id=${JSON.stringify(id)}`,
-        );
+        host.error(`invalid request: method=${JSON.stringify(method)}, id=${JSON.stringify(id)}`);
         return;
       }
-
-      const host = createRuntimeHost(currentTransport, options.logTarget);
       const dispatcher = createRuntimeDispatcher(options, host, {
-        sendResult<TResult>(requestId: JsonRpcId, result: TResult): void {
-          sendMessage(currentTransport, {
+        async sendResult<TResult>(requestId: JsonRpcId, result: TResult): Promise<void> {
+          await sendMessage(currentTransport, {
             jsonrpc: '2.0',
             id: requestId,
             result,
           });
         },
-        sendError(requestId: JsonRpcId, code: number, message: string, data?: unknown): void {
-          sendMessage(currentTransport, {
+        async sendError(requestId: JsonRpcId, code: number, message: string, data?: unknown): Promise<void> {
+          await sendMessage(currentTransport, {
             jsonrpc: '2.0',
             id: requestId,
             error: {
@@ -138,11 +139,11 @@ function defaultTransport(): PluginRuntimeTransport {
 }
 
 /** Sends one JSON-RPC response or notification through the active transport. */
-function sendMessage(
+async function sendMessage(
   transport: PluginRuntimeTransport | null,
   value: unknown,
-): void {
-  writeFramedMessage((transport ?? defaultTransport()).stdout, value);
+): Promise<void> {
+  await writeFramedMessage((transport ?? defaultTransport()).stdout, value);
 }
 
 /** Builds the host helper for the currently active transport. */
@@ -151,8 +152,8 @@ function createRuntimeHost(
   logTarget: string | undefined,
 ) {
   return createHost(
-    (method: string, params: unknown) => {
-      sendMessage(transport, {
+    async (method: string, params: unknown) => {
+      await sendMessage(transport, {
         jsonrpc: '2.0',
         method,
         params,
@@ -170,9 +171,9 @@ function isRequestParams(value: unknown): value is RequestParams {
   return true;
 }
 
-/** Coerces unknown request method values into trimmed strings. */
-function asTrimmedString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : String(value ?? '').trim();
+/** Coerces unknown request method values into trimmed strings. Returns null for non-strings. */
+function asTrimmedString(value: unknown): string | null {
+  return typeof value === 'string' ? value.trim() : null;
 }
 
 /** Coerces unknown params to a Record, returning null for invalid input. */

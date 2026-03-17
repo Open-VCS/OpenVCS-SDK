@@ -5,6 +5,7 @@ import {
   PLUGIN_INTERNAL_ERROR_CODE,
   PLUGIN_FAILURE_CODE,
   PROTOCOL_VERSION,
+  PROTOCOL_VERSION_MISMATCH_CODE,
 } from '../types';
 import type {
   JsonRpcId,
@@ -98,7 +99,7 @@ export function createRuntimeDispatcher(
       if (method === 'plugin.initialize') {
         const expectedVersion = params.expected_protocol_version;
         if (typeof expectedVersion === 'number' && expectedVersion !== PROTOCOL_VERSION) {
-          writer.sendError(id, PLUGIN_FAILURE_CODE, 'protocol version mismatch', {
+          writer.sendError(id, PROTOCOL_VERSION_MISMATCH_CODE, 'protocol version mismatch', {
             code: 'protocol-version-mismatch',
             message: `host expects protocol ${expectedVersion}, plugin supports ${PROTOCOL_VERSION}`,
           });

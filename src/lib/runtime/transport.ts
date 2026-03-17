@@ -19,13 +19,16 @@ export function serializeFramedMessage(value: unknown): Buffer {
 }
 
 /** Writes one JSON-RPC payload to the supplied stdout-like stream. */
-export function writeFramedMessage(
+export async function writeFramedMessage(
   writer: NodeJS.WritableStream,
   value: unknown,
-): void {
+): Promise<void> {
   try {
     const serialized = serializeFramedMessage(value);
-    writer.write(serialized);
+    const canContinue = writer.write(serialized);
+    if (!canContinue) {
+      await new Promise<void>((resolve) => writer.once('drain', resolve));
+    }
   } catch (error) {
     console.error(
       `[transport] failed to write framed message: ${error instanceof Error ? error.message : String(error)}`,

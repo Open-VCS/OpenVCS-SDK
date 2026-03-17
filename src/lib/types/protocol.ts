@@ -10,6 +10,9 @@ export const PLUGIN_FAILURE_CODE = -32001;
 /** Stores the reserved JSON-RPC error code used for uncaught plugin errors. */
 export const PLUGIN_INTERNAL_ERROR_CODE = -32002;
 
+/** Stores the reserved JSON-RPC error code used for protocol version mismatches. */
+export const PROTOCOL_VERSION_MISMATCH_CODE = -32003;
+
 /** Represents a JSON-RPC request identifier. */
 export type JsonRpcId = number | string;
 
