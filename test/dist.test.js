@@ -108,7 +108,7 @@ test("readManifest rejects id with path separators", () => {
 test("validateDeclaredModuleExec accepts .js/.mjs/.cjs", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
   writeText(path.join(pluginDir, "bin", "plugin.mjs"), "export {};\n");
   writeText(path.join(pluginDir, "bin", "plugin.cjs"), "module.exports = {};\n");
 
@@ -133,7 +133,7 @@ test("validateDeclaredModuleExec rejects non-node extension", () => {
 test("validateDeclaredModuleExec rejects absolute path", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
   assert.throws(
     () => __private.validateDeclaredModuleExec(pluginDir, path.resolve(pluginDir, "bin", "plugin.js")),
     /must be a relative path under bin/
@@ -279,6 +279,7 @@ test("bundlePlugin trims module.exec and includes extra bin files", async () => 
     id: "x",
     module: { exec: "  module.mjs  " },
   });
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
   writeText(path.join(pluginDir, "bin", "module.mjs"), "export {};\n");
   writeText(path.join(pluginDir, "bin", "helpers", "util.mjs"), "export const x = 1;\n");
 
@@ -291,6 +292,7 @@ test("bundlePlugin trims module.exec and includes extra bin files", async () => 
   });
   const entries = await readBundleEntries(outPath);
 
+  assert.equal(entries.has("x/bin/plugin.js"), true);
   assert.equal(entries.has("x/bin/module.mjs"), true);
   assert.equal(entries.has("x/bin/helpers/util.mjs"), true);
   cleanupTempDir(root);
@@ -303,7 +305,7 @@ test("bundlePlugin builds code plugins before packaging", async () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "builder",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "builder",
@@ -327,6 +329,7 @@ test("bundlePlugin builds code plugins before packaging", async () => {
   const entries = await readBundleEntries(outPath);
 
   assert.equal(entries.has("builder/bin/plugin.js"), true);
+  assert.equal(entries.has("builder/bin/openvcs-plugin.js"), true);
   cleanupTempDir(root);
 });
 
@@ -337,12 +340,12 @@ test("bundlePlugin with no-build requires prebuilt module entrypoint", async () 
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "prebuilt",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
 
   await assert.rejects(
     () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
-    /module entrypoint not found/
+    /compiled plugin module not found/
   );
 
   cleanupTempDir(root);
@@ -355,7 +358,7 @@ test("bundlePlugin errors when code plugin lacks build:plugin", async () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "missing-script",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "missing-script",
@@ -416,9 +419,10 @@ test("bundlePlugin rejects plugin id with path separators", async () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "bad/id",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
 
   await assert.rejects(
     () => bundlePlugin({ pluginDir, outDir, verbose: false, noBuild: true, noNpmDeps: true }),
@@ -439,9 +443,10 @@ test("bundlePlugin rejects symlink in bin", async () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "x",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
   writeText(path.join(pluginDir, "bin", "target.js"), "export {};\n");
   fs.symlinkSync(path.join(pluginDir, "bin", "target.js"), path.join(pluginDir, "bin", "link.js"));
 
@@ -460,9 +465,10 @@ test("bundlePlugin output archive keeps plugin-id root directory", async () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "root-check",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
 
   const outPath = await bundlePlugin({
     pluginDir,
@@ -487,9 +493,10 @@ test("bundlePlugin overwrites existing bundle file", async () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "replace",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
 
   const existingPath = path.join(outDir, "replace.ovcsp");
   writeText(existingPath, "not-a-tar");
@@ -514,9 +521,10 @@ test("bundlePlugin generates package-lock in staging, not pluginDir", async () =
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "npm-plugin",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
   writeJson(path.join(pluginDir, "package.json"), {
     name: "npm-plugin",
     version: "0.1.0",
@@ -546,9 +554,10 @@ test("bundlePlugin with --no-npm-deps does not generate lockfile", async () => {
 
   writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
     id: "no-npm",
-    module: { exec: "plugin.js" },
+    module: { exec: "openvcs-plugin.js" },
   });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
+  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
   writeJson(path.join(pluginDir, "package.json"), {
     name: "no-npm",
     version: "0.1.0",

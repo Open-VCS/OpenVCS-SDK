@@ -9,6 +9,7 @@ import {
   readManifest,
   runCommand,
   validateDeclaredModuleExec,
+  validateGeneratedBootstrapTargets,
 } from "./build";
 import {
   copyDirectoryRecursiveStrict,
@@ -251,6 +252,7 @@ export async function bundlePlugin(parsedArgs: DistArgs): Promise<string> {
   if (!moduleExec && !hasThemes && !entry) {
     throw new Error("manifest has no module.exec, entry, or themes/");
   }
+  validateGeneratedBootstrapTargets(pluginDir, moduleExec);
   validateDeclaredModuleExec(pluginDir, moduleExec);
 
   ensureDirectory(outDir);
