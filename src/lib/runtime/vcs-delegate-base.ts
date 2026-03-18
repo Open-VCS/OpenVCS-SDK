@@ -30,7 +30,7 @@ export abstract class VcsDelegateBase<
   }
 
   /** Builds an SDK `vcs.*` delegate map from the subclass overrides. */
-  toDelegates(): VcsTypes.VcsDelegates<TContext> {
+  toDelegates() {
     const delegates: VcsDelegateAssignments<TContext> = {};
     const delegatePrototype = Object.getPrototypeOf(this) as VcsDelegatePrototype<TContext> | null;
     const basePrototype = VcsDelegateBase.prototype as VcsDelegatePrototype<TContext>;
@@ -58,6 +58,9 @@ export abstract class VcsDelegateBase<
     const rpcMethod = VCS_DELEGATE_METHOD_MAPPINGS[
       delegateMethod
     ] as VcsDelegateRpcMethodName<TMethodName>;
+    // `bind` loses the method-specific key correlation here; the cast is
+    // safe because `assignDelegate` is only called with handlers that were
+    // verified against `VcsDelegateBindings<TContext>` in the loop above.
     const boundHandler = handler.bind(this) as VcsDelegateAssignments<TContext>[typeof rpcMethod];
 
     delegates[rpcMethod] = boundHandler;

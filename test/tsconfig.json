@@ -4,5 +4,5 @@
     "noEmit": true,
     "rootDir": ".."
   },
-  "include": ["../src/**/*.ts", "./vcs-delegate-base.types.ts"]
+  "include": ["../src/**/*.ts", "./vcs-delegate-base.types.ts", "./vcs-delegate-base.test.ts"]
 }
