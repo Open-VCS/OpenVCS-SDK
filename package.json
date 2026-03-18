@@ -1,6 +1,6 @@
 {
   "name": "@openvcs/sdk",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "OpenVCS SDK CLI for plugin scaffolding and .ovcsp tar.gz packaging",
   "license": "GPL-3.0-or-later",
   "homepage": "https://openvcs.app/",
@@ -32,7 +32,8 @@
   },
   "scripts": {
     "build": "node scripts/build-sdk.js",
-    "test": "npm run build && node --test test/*.test.js",
+    "test": "npm run build && npm run test:types && node --test test/*.test.js",
+    "test:types": "node ./node_modules/typescript/bin/tsc -p test/tsconfig.json",
     "prepack": "npm run build",
     "preopenvcs": "npm run build",
     "openvcs": "node bin/openvcs.js"
