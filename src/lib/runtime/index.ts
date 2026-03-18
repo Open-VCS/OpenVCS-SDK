@@ -26,6 +26,7 @@ export {
   bootstrapPluginModule,
   createRegisteredPluginRuntime,
 } from './registration';
+export { VcsDelegateBase } from './vcs-delegate-base';
 
 /** Starts a previously created plugin runtime on process stdio. */
 export function startPluginRuntime(

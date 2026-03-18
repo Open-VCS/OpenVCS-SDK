@@ -81,10 +81,45 @@ export const PluginDefinition: PluginModuleDefinition = {
 export function OnPluginStart(): void {}
 ```
 
+VCS backends can also derive from `VcsDelegateBase` and attach exact `vcs.*`
+delegates during startup:
+
+```ts
+import {
+  VcsDelegateBase,
+  type PluginModuleDefinition,
+} from '@openvcs/sdk/runtime';
+
+class ExampleVcsDelegates extends VcsDelegateBase<{ cwd: string }> {
+  override getCaps() {
+    return {
+      commits: true,
+      branches: true,
+      tags: false,
+      staging: true,
+      push_pull: true,
+      fast_forward: true,
+    };
+  }
+}
+
+export const PluginDefinition: PluginModuleDefinition = {};
+
+export function OnPluginStart(): void {
+  const vcs = new ExampleVcsDelegates({ cwd: process.cwd() });
+  PluginDefinition.vcs = vcs.toDelegates();
+}
+```
+
+Define ordinary prototype methods such as `getCaps()` and `commitIndex()` on the
+subclass. `toDelegates()` maps those camelCase methods to the exact host method
+names like `vcs.get_caps` and `vcs.commit_index`, and only registers methods
+that differ from the SDK base class.
+
 Runtime and protocol imports are exposed as npm subpaths:
 
 ```ts
-import { pluginError } from '@openvcs/sdk/runtime';
+import { VcsDelegateBase, pluginError } from '@openvcs/sdk/runtime';
 import type { PluginDelegates, VcsDelegates } from '@openvcs/sdk/types';
 ```
 
