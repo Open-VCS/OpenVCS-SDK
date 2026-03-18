@@ -6,7 +6,12 @@ const test = require('node:test');
 
 const { VcsDelegateBase } = require('../lib/runtime');
 
-/** @typedef {{ message: string, method: string }} CommitCall */
+/**
+ * Compile-time override safety lives in `vcs-delegate-base.types.ts`, which
+ * verifies that generic parameters are explicit and incompatible signatures
+ * (wrong return type or params) fail the TypeScript compiler.  This file
+ * tests runtime behavior using the plain Node test runner.
+ * @typedef {{ message: string, method: string }} CommitCall */
 
 class ExampleVcsDelegates extends VcsDelegateBase {
   /** @param {{ prefix: string, calls: CommitCall[] }} deps */
@@ -129,13 +134,31 @@ test('VcsDelegateBase returns a fresh delegate map on each call', async () => {
   );
 });
 
-test('VcsDelegateBase throws when a base stub is called directly', () => {
+test('VcsDelegateBase throws with the exact error message for base stubs', () => {
   const delegate = new ExampleVcsDelegates({ prefix: 'x', calls: [] });
-  assert.throws(
-    // cloneRepo is a base stub (not overridden by ExampleVcsDelegates)
-    () => delegate.cloneRepo({ url: 'x', dest: 'y' }, {}),
-    /VCS delegate method 'cloneRepo' must be overridden/,
-  );
+
+  // Each base stub throws with a message that includes the method name.
+  // Test a representative subset; all stubs share the same formatter.
+  const expectedMessage = "VCS delegate method 'cloneRepo' must be overridden before registration";
+  let thrown;
+  try {
+    delegate.cloneRepo({ url: 'x', dest: 'y' }, {});
+  } catch (e) {
+    thrown = e;
+  }
+  assert.ok(thrown instanceof Error, 'should throw an Error');
+  assert.strictEqual(thrown.message, expectedMessage);
+
+  // Verify a second stub throws with its own method name in the message.
+  const expectedMessage2 = "VCS delegate method 'stashPush' must be overridden before registration";
+  let thrown2;
+  try {
+    delegate.stashPush({ session_id: 's' }, {});
+  } catch (e) {
+    thrown2 = e;
+  }
+  assert.ok(thrown2 instanceof Error);
+  assert.strictEqual(thrown2.message, expectedMessage2);
 });
 
 test('VcsDelegateBase accepts an empty deps object without errors', () => {

@@ -124,6 +124,15 @@ signature so TypeScript checks your subclass against the SDK contract. Base
 stubs throw through an internal `never`-returning helper, which is why concrete
 plugins should always implement the methods they intend to expose.
 
+### Compile-time override safety
+
+The SDK enforces correct method signatures at compile time.  Subclasses that
+override with the wrong return type or parameter shape produce a TypeScript error.
+The SDK test suite includes `test/vcs-delegate-base.types.ts` which explicitly
+verifies that incompatible overrides (e.g. returning `string` instead of
+`VcsCapabilities`) fail the compiler under `@ts-expect-error`.  Runtime tests
+in `test/vcs-delegate-base.test.js` cover behavior — not signatures.
+
 Runtime and protocol imports are exposed as npm subpaths:
 
 ```ts

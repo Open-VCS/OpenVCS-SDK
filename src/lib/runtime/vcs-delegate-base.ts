@@ -13,6 +13,8 @@ import {
   VCS_DELEGATE_METHOD_MAPPINGS,
 } from './vcs-delegate-metadata';
 
+export type { VcsDelegateAssignments } from './vcs-delegate-metadata';
+
 /** Describes one synchronous or asynchronous VCS delegate return value. */
 type VcsHandlerResult<TResult> = TResult | Promise<TResult>;
 
@@ -30,7 +32,7 @@ export abstract class VcsDelegateBase<
   }
 
   /** Builds an SDK `vcs.*` delegate map from the subclass overrides. */
-  toDelegates() {
+  toDelegates(): VcsDelegateAssignments<TContext> {
     const delegates: VcsDelegateAssignments<TContext> = {};
     const delegatePrototype = Object.getPrototypeOf(this) as VcsDelegatePrototype<TContext> | null;
     const basePrototype = VcsDelegateBase.prototype as VcsDelegatePrototype<TContext>;
