@@ -87,11 +87,16 @@ delegates during startup:
 ```ts
 import {
   VcsDelegateBase,
+  type PluginRuntimeContext,
   type PluginModuleDefinition,
 } from '@openvcs/sdk/runtime';
+import type { RequestParams, VcsCapabilities } from '@openvcs/sdk/types';
 
 class ExampleVcsDelegates extends VcsDelegateBase<{ cwd: string }> {
-  override getCaps() {
+  override getCaps(
+    _params: RequestParams,
+    _context: PluginRuntimeContext,
+  ): VcsCapabilities {
     return {
       commits: true,
       branches: true,
@@ -114,7 +119,8 @@ export function OnPluginStart(): void {
 Define ordinary prototype methods such as `getCaps()` and `commitIndex()` on the
 subclass. `toDelegates()` maps those camelCase methods to the exact host method
 names like `vcs.get_caps` and `vcs.commit_index`, and only registers methods
-that differ from the SDK base class.
+that differ from the SDK base class. Use `override` with the full params/context
+signature so TypeScript checks your subclass against the SDK contract.
 
 Runtime and protocol imports are exposed as npm subpaths:
 

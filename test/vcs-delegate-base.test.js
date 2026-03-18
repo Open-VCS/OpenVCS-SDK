@@ -6,6 +6,9 @@ const test = require("node:test");
 
 const { VcsDelegateBase } = require("../lib/runtime");
 
+/** @typedef {{ message: string, method: string }} CommitCall */
+
+/** @extends {VcsDelegateBase<{ prefix: string, calls: CommitCall[] }>} */
 class ExampleVcsDelegates extends VcsDelegateBase {
   getCaps() {
     return {
@@ -24,6 +27,7 @@ class ExampleVcsDelegates extends VcsDelegateBase {
   }
 }
 
+/** @extends {VcsDelegateBase<{}>} */
 class SharedBranchDelegates extends VcsDelegateBase {
   getCurrentBranch(params) {
     return `branch:${params.session_id}`;
@@ -90,5 +94,26 @@ test("VcsDelegateBase keeps inherited overrides when building delegates", async 
       { host: {}, method: "vcs.list_branches", requestId: 9 },
     ),
     [],
+  );
+});
+
+test("VcsDelegateBase returns a fresh delegate map on each call", async () => {
+  const delegate = new ExampleVcsDelegates({ prefix: "repeat", calls: [] });
+  const firstDelegates = delegate.toDelegates();
+  const secondDelegates = delegate.toDelegates();
+
+  assert.notStrictEqual(firstDelegates, secondDelegates);
+  assert.notStrictEqual(firstDelegates["vcs.commit"], secondDelegates["vcs.commit"]);
+  assert.equal(
+    await secondDelegates["vcs.commit"](
+      {
+        session_id: "session-3",
+        name: "OpenVCS",
+        email: "team@example.com",
+        message: "again",
+      },
+      { host: {}, method: "vcs.commit", requestId: 10 },
+    ),
+    "repeat:again",
   );
 });
