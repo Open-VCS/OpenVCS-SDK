@@ -13,8 +13,6 @@ import {
   VCS_DELEGATE_METHOD_MAPPINGS,
 } from './vcs-delegate-metadata';
 
-export type { VcsDelegateAssignments } from './vcs-delegate-metadata';
-
 /** Describes one synchronous or asynchronous VCS delegate return value. */
 type VcsHandlerResult<TResult> = TResult | Promise<TResult>;
 
