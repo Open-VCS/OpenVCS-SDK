@@ -81,10 +81,62 @@ export const PluginDefinition: PluginModuleDefinition = {
 export function OnPluginStart(): void {}
 ```
 
+VCS backends can also derive from `VcsDelegateBase` and attach exact `vcs.*`
+delegates during startup:
+
+```ts
+import {
+  VcsDelegateBase,
+  type PluginRuntimeContext,
+  type PluginModuleDefinition,
+} from '@openvcs/sdk/runtime';
+import type { RequestParams, VcsCapabilities } from '@openvcs/sdk/types';
+
+class ExampleVcsDelegates extends VcsDelegateBase<{ cwd: string }> {
+  override getCaps(
+    _params: RequestParams,
+    _context: PluginRuntimeContext,
+  ): VcsCapabilities {
+    return {
+      commits: true,
+      branches: true,
+      tags: false,
+      staging: true,
+      push_pull: true,
+      fast_forward: true,
+    };
+  }
+}
+
+export const PluginDefinition: PluginModuleDefinition = {};
+
+export function OnPluginStart(): void {
+  const vcs = new ExampleVcsDelegates({ cwd: process.cwd() });
+  PluginDefinition.vcs = vcs.toDelegates();
+}
+```
+
+Define ordinary prototype methods such as `getCaps()` and `commitIndex()` on the
+subclass. `toDelegates()` maps those camelCase methods to the exact host method
+names like `vcs.get_caps` and `vcs.commit_index`, and only registers methods
+that differ from the SDK base class. Use `override` with the full params/context
+signature so TypeScript checks your subclass against the SDK contract. Base
+stubs throw through an internal `never`-returning helper, which is why concrete
+plugins should always implement the methods they intend to expose.
+
+### Compile-time override safety
+
+The SDK enforces correct method signatures at compile time.  Subclasses that
+override with the wrong return type or parameter shape produce a TypeScript error.
+The SDK test suite includes `test/vcs-delegate-base.types.ts` which explicitly
+verifies that incompatible overrides (e.g. returning `string` instead of
+`VcsCapabilities`) fail the compiler under `@ts-expect-error`.  Runtime tests
+in `test/vcs-delegate-base.test.js` cover behavior — not signatures.
+
 Runtime and protocol imports are exposed as npm subpaths:
 
 ```ts
-import { pluginError } from '@openvcs/sdk/runtime';
+import { VcsDelegateBase, pluginError } from '@openvcs/sdk/runtime';
 import type { PluginDelegates, VcsDelegates } from '@openvcs/sdk/types';
 ```
 
