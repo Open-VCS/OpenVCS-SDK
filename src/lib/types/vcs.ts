@@ -238,6 +238,8 @@ export interface CommitEntry {
   author: string;
   /** Stores the formatted metadata string. */
   meta: string;
+  /** Stores the first parent commit id when available. */
+  parent_oid?: string;
 }
 
 /** Describes params for `vcs.diff_file`. */
@@ -350,6 +352,18 @@ export interface VcsGetBranchUpstreamParams extends VcsSessionParams {
 export interface VcsResetSoftToParams extends VcsSessionParams {
   /** Stores the revision to reset to. */
   rev: string;
+}
+
+/** Describes params for continuing a merge in progress. */
+export interface VcsMergeContinueParams extends VcsSessionParams {
+  /** Stores an optional commit message override. */
+  message?: string;
+}
+
+/** Describes params for hard resetting HEAD to a given ref. */
+export interface VcsHardResetHeadParams extends VcsSessionParams {
+  /** Stores the ref to reset HEAD to; defaults to HEAD. */
+  ref?: string;
 }
 
 /** Describes one configured author identity. */
@@ -525,7 +539,7 @@ export interface VcsDelegates<TContext = unknown> {
   /** Handles `vcs.merge_abort`. */
   'vcs.merge_abort'?: RpcMethodHandler<VcsSessionParams, null, TContext>;
   /** Handles `vcs.merge_continue`. */
-  'vcs.merge_continue'?: RpcMethodHandler<VcsSessionParams, null, TContext>;
+  'vcs.merge_continue'?: RpcMethodHandler<VcsMergeContinueParams, null, TContext>;
   /** Handles `vcs.is_merge_in_progress`. */
   'vcs.is_merge_in_progress'?: RpcMethodHandler<
     VcsSessionParams,
@@ -545,7 +559,7 @@ export interface VcsDelegates<TContext = unknown> {
     TContext
   >;
   /** Handles `vcs.hard_reset_head`. */
-  'vcs.hard_reset_head'?: RpcMethodHandler<VcsSessionParams, null, TContext>;
+  'vcs.hard_reset_head'?: RpcMethodHandler<VcsHardResetHeadParams, null, TContext>;
   /** Handles `vcs.reset_soft_to`. */
   'vcs.reset_soft_to'?: RpcMethodHandler<VcsResetSoftToParams, null, TContext>;
   /** Handles `vcs.get_identity`. */
