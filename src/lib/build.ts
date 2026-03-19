@@ -36,7 +36,17 @@ const AUTHORED_PLUGIN_MODULE_BASENAME = "plugin.js";
 
 /** Returns the npm executable name for the current platform. */
 export function npmExecutable(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
+  return "npm";
+}
+
+/** Returns whether a command must be launched via the Windows shell. */
+export function shouldUseWindowsShell(program: string): boolean {
+  if (process.platform !== "win32") {
+    return false;
+  }
+
+  const normalized = program.toLowerCase();
+  return normalized === "npm" || normalized.endsWith(".cmd") || normalized.endsWith(".bat");
 }
 
 /** Formats help text for the build command. */
@@ -271,6 +281,7 @@ export function runCommand(program: string, args: string[], cwd: string, verbose
 
   const result = spawnSync(program, args, {
     cwd,
+    shell: shouldUseWindowsShell(program),
     stdio: ["ignore", verbose ? "inherit" : "ignore", "inherit"],
   }) as CommandResult;
 

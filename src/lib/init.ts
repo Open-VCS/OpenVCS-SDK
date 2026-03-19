@@ -34,7 +34,16 @@ interface InitCommandError {
 }
 
 function npmExecutable(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
+  return "npm";
+}
+
+function shouldUseWindowsShell(program: string): boolean {
+  if (process.platform !== "win32") {
+    return false;
+  }
+
+  const normalized = program.toLowerCase();
+  return normalized === "npm" || normalized.endsWith(".cmd") || normalized.endsWith(".bat");
 }
 
 export function initUsage(commandName = "openvcs"): string {
@@ -207,6 +216,7 @@ async function collectAnswers(
 function runNpmInstall(targetDir: string): void {
   const result = spawnSync(npmExecutable(), ["install"], {
     cwd: targetDir,
+    shell: shouldUseWindowsShell(npmExecutable()),
     stdio: "inherit",
   });
   if (result.error) {
