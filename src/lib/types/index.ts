@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 export * from './host';
+export * from './menu';
 export * from './plugin';
 export * from './protocol';
 export * from './vcs';

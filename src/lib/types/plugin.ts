@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { RequestParams, RpcMethodHandler } from './protocol';
+import type {
+  PluginMenuDefinition,
+} from './menu';
 
 /** Describes the capability flags reported during plugin initialization. */
 export interface PluginImplements {
@@ -21,9 +24,6 @@ export interface PluginInitializeResult {
 
 /** Describes one optional override returned by a custom initialize handler. */
 export type PluginInitializeOverride = Partial<PluginInitializeResult>;
-
-/** Describes one plugin-contributed menu definition. */
-export type PluginMenuDefinition = Record<string, unknown>;
 
 /** Describes one plugin settings value payload. */
 export type PluginSettingsValue = Record<string, unknown>;
