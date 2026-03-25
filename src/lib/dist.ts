@@ -161,8 +161,7 @@ function rejectNativeAddonsRecursive(dirPath: string): void {
     const entryPath = path.join(dirPath, entry.name);
     const stats = fs.lstatSync(entryPath);
     if (stats.isSymbolicLink()) {
-      console.warn(`warning: plugin contains a symlink: ${entryPath} (symlinks may not work in portable bundles)`);
-      continue;
+      throw new Error(`plugin contains a symlink: ${entryPath}`);
     }
     if (stats.isDirectory()) {
       rejectNativeAddonsRecursive(entryPath);

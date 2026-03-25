@@ -19,8 +19,7 @@ export function rejectSymlinksRecursive(rootDir: string): void {
       const entryPath = path.join(current, entry.name);
       const stats = fs.lstatSync(entryPath);
       if (stats.isSymbolicLink()) {
-        console.warn(`warning: plugin contains a symlink: ${entryPath} (symlinks may not work in portable bundles)`);
-        continue;
+        throw new Error(`plugin contains a symlink: ${entryPath}`);
       }
       if (stats.isDirectory()) {
         stack.push(entryPath);
@@ -36,14 +35,7 @@ export function ensureDirectory(filePath: string): void {
 export function copyFileStrict(sourcePath: string, destinationPath: string): void {
   const stats = fs.lstatSync(sourcePath);
   if (stats.isSymbolicLink()) {
-    console.warn(`warning: plugin contains a symlink: ${sourcePath} (symlinks may not work in portable bundles)`);
-    const target = fs.readlinkSync(sourcePath);
-    console.warn(`       resolving to: ${target}`);
-    const resolvedTarget = path.isAbsolute(target) ? target : path.resolve(path.dirname(sourcePath), target);
-    if (!fs.existsSync(resolvedTarget)) {
-      throw new Error(`symlink target does not exist: ${resolvedTarget}`);
-    }
-    return copyFileStrict(resolvedTarget, destinationPath);
+    throw new Error(`plugin contains a symlink: ${sourcePath}`);
   }
   if (!stats.isFile()) {
     throw new Error(`expected file: ${sourcePath}`);
@@ -60,8 +52,7 @@ export function copyDirectoryRecursiveStrict(sourceDir: string, destinationDir: 
 
   const stats = fs.lstatSync(sourceDir);
   if (stats.isSymbolicLink()) {
-    console.warn(`warning: plugin contains a symlink: ${sourceDir} (symlinks may not work in portable bundles)`);
-    return;
+    throw new Error(`plugin contains a symlink: ${sourceDir}`);
   }
   if (!stats.isDirectory()) {
     throw new Error(`expected directory: ${sourceDir}`);
@@ -74,20 +65,7 @@ export function copyDirectoryRecursiveStrict(sourceDir: string, destinationDir: 
     const destinationPath = path.join(destinationDir, entry.name);
     const entryStats = fs.lstatSync(sourcePath);
     if (entryStats.isSymbolicLink()) {
-      console.warn(`warning: plugin contains a symlink: ${sourcePath} (symlinks may not work in portable bundles)`);
-      const target = fs.readlinkSync(sourcePath);
-      console.warn(`       resolving to: ${target}`);
-      const resolvedTarget = path.isAbsolute(target) ? target : path.resolve(path.dirname(sourcePath), target);
-      if (!fs.existsSync(resolvedTarget)) {
-        throw new Error(`symlink target does not exist: ${resolvedTarget}`);
-      }
-      if (fs.statSync(resolvedTarget).isDirectory()) {
-        copyDirectoryRecursiveStrict(resolvedTarget, destinationPath);
-      } else if (fs.statSync(resolvedTarget).isFile()) {
-        ensureDirectory(path.dirname(destinationPath));
-        fs.copyFileSync(resolvedTarget, destinationPath);
-      }
-      continue;
+      throw new Error(`plugin contains a symlink: ${sourcePath}`);
     }
     if (entryStats.isDirectory()) {
       copyDirectoryRecursiveStrict(sourcePath, destinationPath);
