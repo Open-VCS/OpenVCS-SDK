@@ -216,6 +216,19 @@ npx openvcs init --help
 Publishing is outside the SDK CLI. Use your normal npm workflow once `openvcs build`
 has produced the runtime assets you want to ship.
 
+CI release channels can publish prereleases to npm using dist-tags:
+
+- `latest`: stable releases
+- `beta`: builds from the `Beta` branch
+- `nightly`: scheduled builds from `Dev` when there are changes since the last nightly
+
+Examples:
+
+```bash
+npm install @openvcs/sdk@beta
+npm install @openvcs/sdk@nightly
+```
+
 ## License
 
 Copyright © 2025-2026 OpenVCS Contributors. SPDX-License-Identifier: GPL-3.0-or-later

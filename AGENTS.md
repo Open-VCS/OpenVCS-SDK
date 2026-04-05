@@ -26,6 +26,7 @@
 - `openvcs build --plugin-dir /path/to/plugin` to build plugin runtime assets.
 - `openvcs init [--theme] [dir]` to scaffold plugin projects.
 - Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
+- CI release channels publish npm prereleases on `Beta` (`beta`) and scheduled `Dev` nightlies (`nightly`).
 
 ## Coding style & conventions
 - Author code in TypeScript (`src/**/*.ts`) targeting Node 18+.
