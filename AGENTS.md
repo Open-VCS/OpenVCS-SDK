@@ -6,16 +6,15 @@
 - `src/bin/openvcs.ts` compiles to the executable entrypoint installed by npm (`bin/openvcs.js`).
 - `src/lib/cli.ts` routes subcommands.
 - `src/lib/build.ts` implements plugin asset builds (`openvcs build`).
-- `src/lib/dist.ts` implements plugin packaging (`openvcs dist`).
 - `src/lib/init.ts` implements interactive plugin scaffolding (`openvcs init`).
 - `src/lib/fs-utils.ts` contains file-copy and path safety helpers.
 - `src/lib/runtime/` contains the shared Node plugin runtime, JSON-RPC transport, and delegate dispatcher.
 - `src/lib/types/` contains shared protocol, plugin, host, and VCS contract types.
-- Build outputs go under plugin `dist/` folders.
+- Build outputs go into plugin runtime files such as `bin/` and generated SDK `lib/` outputs.
 
 ## Architecture reference
-- SDK owns plugin packaging plus Node plugin authoring helpers.
-- Bundles follow the `.ovcsp` format as gzip-compressed tar (`tar.gz`) containing `openvcs.plugin.json` plus plugin assets (`bin/`, `entry`, `themes/`, optional `node_modules/`).
+- SDK owns plugin runtime asset builds plus Node plugin authoring helpers.
+- Plugins are ordinary npm packages that ship `package.json` with an `openvcs` object, runtime files under `bin/`, optional `themes/`, and runtime dependencies from `dependencies`.
 - The canonical host contract still lives in `Client/Backend/src/plugin_runtime/protocol.rs`; SDK runtime/types mirror that contract for plugin authors.
 - Keep manifest fields and bundle structure consistent with host expectations.
 
@@ -25,7 +24,6 @@
 - `npm test` (compile then run Node tests via `node --test`).
 - `npm run openvcs -- <args>` (run the local CLI with a prebuild step).
 - `openvcs build --plugin-dir /path/to/plugin` to build plugin runtime assets.
-- `openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist` to produce `.ovcsp` bundles.
 - `openvcs init [--theme] [dir]` to scaffold plugin projects.
 - Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
 
@@ -36,11 +34,11 @@
 - Use clear error messages that include the relevant path/flag/context.
 - Keep path validation strict for security-sensitive code paths.
 - API surfaces should return rich error messages explaining path, capability, or validation issues.
-- Code plugins should expose a `build:plugin` npm script so SDK build/dist can invoke compilation explicitly.
+- Code plugins should expose a `build:plugin` npm script so SDK build can invoke compilation explicitly.
 
 ## Documentation & licensing
 
-- When you change behavior, workflows, CLI flags, bundle layout, or manifest expectations, ALWAYS update the relevant documentation in the same change, even if the user does not explicitly ask.
+- When you change behavior, workflows, CLI flags, npm packaging expectations, or manifest expectations, ALWAYS update the relevant documentation in the same change, even if the user does not explicitly ask.
 - All code files MUST be no more than 1000 lines; split files before they exceed this limit.
 
 ## Testing guidelines

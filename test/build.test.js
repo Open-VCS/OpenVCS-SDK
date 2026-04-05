@@ -52,7 +52,10 @@ test("buildPluginAssets no-ops for theme-only plugins", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
 
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), { id: "theme-only" });
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "theme-only",
+    openvcs: { id: "theme-only" },
+  });
   const manifest = buildPluginAssets({ pluginDir, verbose: false });
 
   assert.equal(manifest.pluginId, "theme-only");
@@ -63,14 +66,17 @@ test("buildPluginAssets requires package.json for code plugins", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
 
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
-    id: "missing-package",
-    module: { exec: "openvcs-plugin.js" },
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "missing-package",
+    openvcs: {
+      id: "missing-package",
+      module: { exec: "openvcs-plugin.js" },
+    },
   });
 
   assert.throws(
     () => buildPluginAssets({ pluginDir, verbose: false }),
-    /code plugins must include package\.json/
+    /code plugins must define scripts\["build:plugin"\]/
   );
 
   cleanupTempDir(root);
@@ -80,13 +86,13 @@ test("buildPluginAssets runs build:plugin and validates output", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
 
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
-    id: "builder",
-    module: { exec: "openvcs-plugin.js" },
-  });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "builder",
     private: true,
+    openvcs: {
+      id: "builder",
+      module: { exec: "openvcs-plugin.js" },
+    },
     scripts: {
       "build:plugin": "node ./scripts/build-plugin.js",
     },
@@ -112,9 +118,12 @@ test("readManifest and validateDeclaredModuleExec stay reusable", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
 
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
-    id: "reusable",
-    module: { exec: "openvcs-plugin.js" },
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "reusable",
+    openvcs: {
+      id: "reusable",
+      module: { exec: "openvcs-plugin.js" },
+    },
   });
   writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
   writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
@@ -163,14 +172,14 @@ test("generateModuleBootstrap handles subdirectory module.exec paths", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
 
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
-    id: "subdir-plugin",
-    module: { exec: "subdir/openvcs-plugin.js" },
-  });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "subdir-plugin",
     type: "module",
     private: true,
+    openvcs: {
+      id: "subdir-plugin",
+      module: { exec: "subdir/openvcs-plugin.js" },
+    },
     scripts: { "build:plugin": "node ./scripts/build.js" },
   });
   writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
@@ -191,13 +200,13 @@ test("detectEsmMode returns true for package.json type: module", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
 
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
-    id: "esm-plugin",
-    module: { exec: "bootstrap.js" },
-  });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "esm-plugin",
     type: "module",
+    openvcs: {
+      id: "esm-plugin",
+      module: { exec: "bootstrap.js" },
+    },
   });
   writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
   writeText(path.join(pluginDir, "bin", "bootstrap.js"), "export {};\n");
@@ -215,13 +224,13 @@ test("detectEsmMode returns false for package.json type: commonjs", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
 
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
-    id: "cjs-plugin",
-    module: { exec: "bootstrap.js" },
-  });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "cjs-plugin",
     type: "commonjs",
+    openvcs: {
+      id: "cjs-plugin",
+      module: { exec: "bootstrap.js" },
+    },
   });
   writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
   writeText(path.join(pluginDir, "bin", "bootstrap.js"), "export {};\n");

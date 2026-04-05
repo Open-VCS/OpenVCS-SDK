@@ -51,7 +51,7 @@ export function shouldUseWindowsShell(program: string): boolean {
 
 /** Formats help text for the build command. */
 export function buildUsage(commandName = "openvcs"): string {
-  return `${commandName} build [args]\n\n  --plugin-dir <path>   Plugin repository root (contains openvcs.plugin.json)\n  -V, --verbose         Enable verbose output\n`;
+  return `${commandName} build [args]\n\n  --plugin-dir <path>   Plugin repository root (contains package.json with openvcs metadata)\n  -V, --verbose         Enable verbose output\n`;
 }
 
 /** Parses `openvcs build` arguments. */
@@ -89,7 +89,7 @@ export function parseBuildArgs(args: string[]): BuildArgs {
 
 /** Reads and validates the plugin manifest. */
 export function readManifest(pluginDir: string): ManifestInfo {
-  const manifestPath = path.join(pluginDir, "openvcs.plugin.json");
+  const manifestPath = path.join(pluginDir, "package.json");
   let manifestRaw: string;
   let manifestFd: number | undefined;
   let manifest: unknown;
@@ -97,12 +97,12 @@ export function readManifest(pluginDir: string): ManifestInfo {
     manifestFd = fs.openSync(manifestPath, "r");
     const manifestStat = fs.fstatSync(manifestFd);
     if (!manifestStat.isFile()) {
-      throw new Error(`missing openvcs.plugin.json at ${manifestPath}`);
+      throw new Error(`missing package.json at ${manifestPath}`);
     }
     manifestRaw = fs.readFileSync(manifestFd, "utf8");
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error(`missing openvcs.plugin.json at ${manifestPath}`);
+      throw new Error(`missing package.json at ${manifestPath}`);
     }
     throw error;
   } finally {
@@ -118,21 +118,28 @@ export function readManifest(pluginDir: string): ManifestInfo {
     throw new Error(`parse ${manifestPath}: ${detail}`);
   }
 
+  const openvcs = (manifest as { openvcs?: unknown }).openvcs as
+    | { id?: unknown; module?: { exec?: unknown }; entry?: unknown }
+    | undefined;
+  if (!openvcs || typeof openvcs !== "object") {
+    throw new Error(`package.json ${manifestPath} is missing an 'openvcs' object`);
+  }
+
   const pluginId =
-    typeof (manifest as { id?: unknown }).id === "string"
-      ? ((manifest as { id: string }).id.trim() as string)
+    typeof openvcs.id === "string"
+      ? (openvcs.id.trim() as string)
       : "";
   if (!pluginId) {
-    throw new Error(`manifest ${manifestPath} is missing a string 'id'`);
+    throw new Error(`package.json ${manifestPath} is missing openvcs.id`);
   }
   if (pluginId === "." || pluginId === ".." || pluginId.includes("/") || pluginId.includes("\\")) {
     throw new Error(`manifest id must not contain path separators: ${pluginId}`);
   }
 
-  const moduleValue = (manifest as { module?: { exec?: unknown } }).module;
+  const moduleValue = openvcs.module;
   const moduleExec = typeof moduleValue?.exec === "string" ? moduleValue.exec.trim() : undefined;
 
-  const entryValue = (manifest as { entry?: unknown }).entry;
+  const entryValue = openvcs.entry;
   const entry = typeof entryValue === "string" ? entryValue.trim() : undefined;
 
   return {

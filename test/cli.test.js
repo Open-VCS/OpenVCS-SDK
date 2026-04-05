@@ -36,12 +36,6 @@ test("openvcs with no args exits non-zero", () => {
   assert.match(result.stderr, /Usage: openvcs <command>/);
 });
 
-test("openvcs dist --help prints dist usage", () => {
-  const result = runCli(["dist", "--help"]);
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /openvcs dist \[args\]/);
-});
-
 test("openvcs build --help prints build usage", () => {
   const result = runCli(["build", "--help"]);
   assert.equal(result.status, 0);
@@ -60,52 +54,17 @@ test("openvcs rejects unknown command", () => {
   assert.match(result.stderr, /unknown command: unknown/);
 });
 
-test("openvcs dist command creates bundle", () => {
-  const root = makeTempDir("openvcs-sdk-test");
-  const pluginDir = path.join(root, "plugin");
-  const outDir = path.join(root, "out");
-
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
-    id: "cli-plugin",
-    module: { exec: "openvcs-plugin.js" },
-  });
-  writeText(path.join(pluginDir, "bin", "plugin.js"), "export function OnPluginStart() {}\n");
-  writeText(path.join(pluginDir, "bin", "openvcs-plugin.js"), "export {};\n");
-
-  const result = runCli([
-    "dist",
-    "--plugin-dir",
-    pluginDir,
-    "--out",
-    outDir,
-    "--no-build",
-    "--no-npm-deps",
-  ]);
-
-  assert.equal(result.status, 0);
-  assert.match(result.stdout.trim(), /cli-plugin\.ovcsp$/);
-  assert.equal(fs.existsSync(path.join(outDir, "cli-plugin.ovcsp")), true);
-
-  cleanupTempDir(root);
-});
-
-test("openvcs dist reports argument errors", () => {
-  const result = runCli(["dist", "--plugin-dir"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /missing value for --plugin-dir/);
-});
-
 test("openvcs build command builds code plugin assets", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
 
-  writeJson(path.join(pluginDir, "openvcs.plugin.json"), {
-    id: "build-plugin",
-    module: { exec: "openvcs-plugin.js" },
-  });
   writeJson(path.join(pluginDir, "package.json"), {
     name: "build-plugin",
     private: true,
+    openvcs: {
+      id: "build-plugin",
+      module: { exec: "openvcs-plugin.js" },
+    },
     scripts: {
       "build:plugin": "node ./scripts/build-plugin.js",
     },

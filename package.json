@@ -1,7 +1,7 @@
 {
   "name": "@openvcs/sdk",
-  "version": "0.2.15",
-  "description": "OpenVCS SDK CLI for plugin scaffolding and .ovcsp tar.gz packaging",
+  "version": "0.2.16",
+  "description": "OpenVCS SDK CLI for plugin scaffolding and runtime asset builds",
   "license": "GPL-3.0-or-later",
   "homepage": "https://openvcs.app/",
   "repository": {

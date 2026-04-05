@@ -1,5 +1,4 @@
 import { buildPluginAssets, buildUsage, parseBuildArgs } from "./build";
-import { bundlePlugin, distUsage, parseDistArgs } from "./dist";
 import { initUsage, runInitCommand } from "./init";
 
 const packageJson: { version: string } = require("../package.json");
@@ -18,7 +17,7 @@ function hasCode(error: unknown, code: string): boolean {
 }
 
 function usage(): string {
-  return "Usage: openvcs <command> [options]\n\nCommands:\n  build [args]           Build plugin runtime assets\n  dist [args]            Package plugin into .ovcsp\n  init [--theme] [dir]   Interactively scaffold a plugin project\n  -v, --version          Show version information\n\nBuild args:\n  --plugin-dir <path>    Plugin root containing openvcs.plugin.json\n  -V, --verbose          Verbose output\n\nDist args:\n  --plugin-dir <path>    Plugin root containing openvcs.plugin.json\n  --out <path>           Output directory (default: ./dist)\n  --no-build             Skip plugin build before packaging\n  --no-npm-deps          Skip npm dependency bundling\n  -V, --verbose          Verbose output\n";
+  return "Usage: openvcs <command> [options]\n\nCommands:\n  build [args]           Build plugin runtime assets\n  init [--theme] [dir]   Interactively scaffold a plugin project\n  -v, --version          Show version information\n\nBuild args:\n  --plugin-dir <path>    Plugin root containing package.json with openvcs metadata\n  -V, --verbose          Verbose output\n";
 }
 
 export async function runCli(args: string[]): Promise<void> {
@@ -37,24 +36,6 @@ export async function runCli(args: string[]): Promise<void> {
   if (command === "help" || command === "--help" || command === "-h") {
     process.stdout.write(usage());
     return;
-  }
-
-  if (command === "dist") {
-    if (rest.includes("--help")) {
-      process.stdout.write(distUsage());
-      return;
-    }
-    try {
-      const parsed = parseDistArgs(rest);
-      const outPath = await bundlePlugin(parsed);
-      process.stdout.write(`${outPath}\n`);
-      return;
-    } catch (error: unknown) {
-      if (hasCode(error, "USAGE")) {
-        throw new Error(distUsage());
-      }
-      throw error;
-    }
   }
 
   if (command === "build") {

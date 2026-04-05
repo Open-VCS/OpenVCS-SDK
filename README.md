@@ -6,8 +6,8 @@
 
 OpenVCS SDK for npm-based plugin development.
 
-Install this package in plugin projects, scaffold a starter plugin, and package
-plugins into `.ovcsp` bundles. The SDK also exports a Node-only JSON-RPC runtime
+Install this package in plugin projects, scaffold a starter plugin, and build
+plugin runtime assets. The SDK also exports a Node-only JSON-RPC runtime
 layer and shared protocol/types so plugins do not have to hand-roll stdio
 framing or method dispatch.
 
@@ -166,19 +166,6 @@ invokes `OnPluginStart()`, and starts the runtime.
 Theme-only plugins can also run `npm run build`; the command exits successfully
 without producing `bin/` output.
 
-## Build a `.ovcsp` bundle
-
-In a generated plugin folder:
-
-```bash
-npm run dist
-```
-
-This produces `dist/<plugin-id>.ovcsp`.
-
-`openvcs dist` runs `openvcs build` first unless `--no-build` is provided.
-Use `--no-build` when packaging prebuilt plugin assets.
-
 Generated code plugin scripts use this split by default:
 
 ```json
@@ -186,7 +173,7 @@ Generated code plugin scripts use this split by default:
   "scripts": {
     "build:plugin": "tsc -p tsconfig.json",
     "build": "openvcs build",
-    "dist": "openvcs dist --plugin-dir . --out dist"
+    "test": "npm run build"
   }
 }
 ```
@@ -194,33 +181,26 @@ Generated code plugin scripts use this split by default:
 For code plugins, reserve `bin/plugin.js` for the compiled author module and point
 `module.exec` at a different bootstrap filename such as `openvcs-plugin.js`.
 
-`.ovcsp` is a gzip-compressed tar archive (`tar.gz`) that contains a top-level
-`<plugin-id>/` directory with `openvcs.plugin.json` and plugin runtime assets.
-
-Bundle contents:
-- `openvcs.plugin.json` (required)
+Plugin package contents should include:
+- `package.json` with an `openvcs` object (required)
 - `icon.*` (optional, first found by extension priority)
 - `bin/` (required for code plugins with `module.exec`)
 - `entry` directory (required for UI plugins with top-level `entry` field; the entire directory containing the entry file is bundled)
 - `themes/` (required for theme plugins)
-- `node_modules/` (if npm dependencies are bundled)
+- runtime dependencies installable from `dependencies`
 
-Dependency behavior while packaging:
+Dependency behavior:
 
-- npm dependency bundling is enabled by default when `package.json` exists.
-- If `package-lock.json` is missing, SDK generates it in the staging area (not the plugin worktree).
-- Dependencies are installed into the bundle staging dir with:
-  - `npm ci --omit=dev --ignore-scripts --no-bin-links --no-audit --no-fund`
-- Disable npm dependency processing with `--no-npm-deps`.
-- Native Node addons (`*.node`) are rejected for portable bundles.
+- OpenVCS installs runtime dependencies from `dependencies` when resolving a plugin source.
+- Keep runtime-only packages out of `devDependencies`.
+- Native Node addons (`*.node`) are not portable and should be avoided.
 
 ## CLI usage
 
-Package a plugin manually:
+Build a plugin manually:
 
 ```bash
 npx openvcs build --plugin-dir /path/to/plugin
-npx openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 ```
 
 Show command help:
@@ -228,16 +208,13 @@ Show command help:
 ```bash
 npx openvcs --help
 npx openvcs build --help
-npx openvcs dist --help
 npx openvcs init --help
 ```
 
-## Releases
+## Publishing Note
 
-Stable releases are published from `.github/workflows/release.yml`.
-
-- npm publishes use npm Trusted Publishing (OIDC), so no `NPM_TOKEN` is required.
-- `npm prepack` compiles TypeScript so published packages include `bin/` and `lib/` JS outputs.
+Publishing is outside the SDK CLI. Use your normal npm workflow once `openvcs build`
+has produced the runtime assets you want to ship.
 
 ## License
 

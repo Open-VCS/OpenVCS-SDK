@@ -228,13 +228,6 @@ function runNpmInstall(targetDir: string): void {
 }
 
 function writeCommonFiles(answers: InitAnswers): void {
-  writeJson(path.join(answers.targetDir, "openvcs.plugin.json"), {
-    id: answers.pluginId,
-    name: answers.pluginName,
-    version: answers.pluginVersion,
-    default_enabled: answers.defaultEnabled,
-    ...(answers.kind === "module" ? { module: { exec: "openvcs-plugin.js" } } : {}),
-  });
   writeText(path.join(answers.targetDir, ".gitignore"), "node_modules/\ndist/\n");
 }
 
@@ -245,11 +238,17 @@ function writeModuleTemplate(answers: InitAnswers): void {
     version: answers.pluginVersion,
     private: true,
     type: "module",
+    openvcs: {
+      id: answers.pluginId,
+      name: answers.pluginName,
+      version: answers.pluginVersion,
+      default_enabled: answers.defaultEnabled,
+      module: { exec: "openvcs-plugin.js" },
+    },
     scripts: {
       "build:plugin": "tsc -p tsconfig.json",
       build: "openvcs build",
-      dist: "openvcs dist --plugin-dir . --out dist",
-      test: "openvcs dist --plugin-dir . --out dist --no-build --no-npm-deps",
+      test: "npm run build",
     },
     dependencies: {
       "@openvcs/sdk": `^${packageJson.version}`,
@@ -284,10 +283,15 @@ function writeThemeTemplate(answers: InitAnswers): void {
     name: answers.pluginId,
     version: answers.pluginVersion,
     private: true,
+    openvcs: {
+      id: answers.pluginId,
+      name: answers.pluginName,
+      version: answers.pluginVersion,
+      default_enabled: answers.defaultEnabled,
+    },
     scripts: {
       build: "openvcs build",
-      dist: "openvcs dist --plugin-dir . --out dist",
-      test: "openvcs dist --plugin-dir . --out dist --no-build --no-npm-deps",
+      test: "npm run build",
     },
     dependencies: {
       "@openvcs/sdk": `^${packageJson.version}`,
