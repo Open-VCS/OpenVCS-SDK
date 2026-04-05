@@ -76,7 +76,7 @@ export interface PluginDelegates<TContext = unknown> {
   /** Handles a contributed plugin action. */
   'plugin.handle_action'?: RpcMethodHandler<
     PluginHandleActionParams,
-    null,
+    unknown,
     TContext
   >;
   /** Returns the default settings values for the plugin. */

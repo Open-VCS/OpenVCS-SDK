@@ -216,15 +216,14 @@ function serializeMenus(): SerializedMenuDefinition[] {
 }
 
 /** Runs a registered action handler by id. */
-export async function runRegisteredAction(actionId: string, ...args: unknown[]): Promise<boolean> {
+export async function runRegisteredAction(actionId: string, ...args: unknown[]): Promise<unknown> {
   const id = String(actionId || '').trim();
-  if (!id) return false;
+  if (!id) return null;
 
   const handler = actionHandlers.get(id);
-  if (!handler) return false;
+  if (!handler) return null;
 
-  await handler(...args);
-  return true;
+  return await handler(...args);
 }
 
 export interface MenuHandle {
@@ -362,10 +361,10 @@ export function createMenuPluginDelegates(): PluginDelegates<PluginRuntimeContex
     async 'plugin.get_menus'(): Promise<PluginMenuDefinition[]> {
       return serializeMenus() as unknown as PluginMenuDefinition[];
     },
-    async 'plugin.handle_action'(params: PluginHandleActionParams): Promise<null> {
+    async 'plugin.handle_action'(params: PluginHandleActionParams): Promise<unknown> {
       const actionId = String(params?.action_id || '').trim();
       if (actionId) {
-        await runRegisteredAction(actionId, params?.payload);
+        return await runRegisteredAction(actionId, params?.payload);
       }
       return null;
     },

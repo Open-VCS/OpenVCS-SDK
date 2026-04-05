@@ -15,8 +15,6 @@ import type {
   PluginModalDefinition,
 } from '../types/modal.js';
 
-import { invoke } from './menu.js';
-
 /** Describes the options accepted by `ModalBuilder.button()`. */
 export interface ModalBuilderButtonOptions {
   /** Stores the optional tooltip text. */
@@ -165,8 +163,8 @@ export class ModalBuilder {
     };
   }
 
-  /** Requests the host to open the modal with the current definition. */
-  async open(): Promise<void> {
-    await invoke('open_plugin_modal', { modal: this.build() });
+  /** Returns the serialized modal payload for a host request. */
+  async open(): Promise<PluginModalDefinition> {
+    return this.build();
   }
 }

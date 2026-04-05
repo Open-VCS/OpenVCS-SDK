@@ -48,7 +48,7 @@ export function createDefaultPluginDelegates<
     async 'plugin.get_menus'(): Promise<[]> {
       return [];
     },
-    async 'plugin.handle_action'(): Promise<null> {
+    async 'plugin.handle_action'(): Promise<unknown> {
       return null;
     },
     async 'plugin.settings.defaults'(): Promise<[]> {

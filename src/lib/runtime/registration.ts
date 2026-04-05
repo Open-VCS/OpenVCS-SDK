@@ -80,8 +80,11 @@ export function createRegisteredPluginRuntime(
       },
       'plugin.handle_action': async (params, ctx) => {
         const actionId = String(params?.action_id || '').trim();
-        if (actionId && (await runRegisteredAction(actionId))) {
-          return null;
+        if (actionId) {
+          const result = await runRegisteredAction(actionId, params?.payload);
+          if (result !== null && result !== undefined) {
+            return result;
+          }
         }
         if (explicitHandleAction) {
           return explicitHandleAction(params, ctx);
