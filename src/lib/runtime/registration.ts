@@ -14,6 +14,10 @@ import type {
   PluginRuntimeTransport,
 } from './contracts';
 import { createPluginRuntime } from './factory';
+import {
+  createMenuPluginDelegates,
+  runRegisteredAction,
+} from './menu';
 
 /** Describes the plugin module startup hook invoked by the generated bootstrap. */
 export type OnPluginStartHandler = () => void | Promise<void>;
@@ -56,8 +60,35 @@ export interface BootstrapPluginModuleOptions {
 export function createRegisteredPluginRuntime(
   definition: PluginModuleDefinition = {},
 ): PluginRuntime {
+  const menuDelegates = createMenuPluginDelegates();
+  const explicitPluginDelegates = definition.plugin ?? {};
+  const explicitGetMenus = explicitPluginDelegates['plugin.get_menus'];
+  const explicitHandleAction = explicitPluginDelegates['plugin.handle_action'];
+
   const options: CreatePluginRuntimeOptions = {
-    plugin: definition.plugin,
+    plugin: {
+      ...explicitPluginDelegates,
+      'plugin.get_menus': async (params, ctx) => {
+        const menus = await menuDelegates['plugin.get_menus']?.(params, ctx);
+        const explicitMenus = explicitGetMenus
+          ? await explicitGetMenus(params, ctx)
+          : [];
+        return [
+          ...(Array.isArray(explicitMenus) ? explicitMenus : []),
+          ...(Array.isArray(menus) ? menus : []),
+        ];
+      },
+      'plugin.handle_action': async (params, ctx) => {
+        const actionId = String(params?.action_id || '').trim();
+        if (actionId && (await runRegisteredAction(actionId))) {
+          return null;
+        }
+        if (explicitHandleAction) {
+          return explicitHandleAction(params, ctx);
+        }
+        return null;
+      },
+    },
     vcs: definition.vcs,
     implements: definition.implements,
     logTarget: definition.logTarget,
