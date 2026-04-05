@@ -28,6 +28,20 @@ export {
 } from './registration';
 export { VcsDelegateBase } from './vcs-delegate-base';
 export type { VcsDelegateAssignments } from './vcs-delegate-metadata';
+export {
+  getMenu,
+  getOrCreateMenu,
+  createMenu,
+  addMenuItem,
+  addMenuSeparator,
+  removeMenu,
+  hideMenu,
+  showMenu,
+  registerAction,
+  invoke,
+  notify,
+} from './menu';
+export type { MenuHandle } from './menu';
 
 /** Starts a previously created plugin runtime on process stdio. */
 export function startPluginRuntime(
