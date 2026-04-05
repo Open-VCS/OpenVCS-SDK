@@ -32,6 +32,8 @@ export type PluginSettingsValue = Record<string, unknown>;
 export interface PluginHandleActionParams extends RequestParams {
   /** Stores the action id selected by the user. */
   action_id?: string;
+  /** Stores an optional payload supplied by the triggering UI. */
+  payload?: Record<string, unknown>;
 }
 
 /** Describes the params shape for plugin settings callbacks. */

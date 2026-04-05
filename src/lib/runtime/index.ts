@@ -22,6 +22,7 @@ export { createDefaultPluginDelegates, createRuntimeDispatcher } from './dispatc
 export { isPluginFailure, pluginError } from './errors';
 export { createPluginRuntime } from './factory';
 export { createHost } from './host';
+export { ModalBuilder } from './modal';
 export {
   bootstrapPluginModule,
   createRegisteredPluginRuntime,

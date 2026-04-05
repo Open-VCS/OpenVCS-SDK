@@ -365,7 +365,7 @@ export function createMenuPluginDelegates(): PluginDelegates<PluginRuntimeContex
     async 'plugin.handle_action'(params: PluginHandleActionParams): Promise<null> {
       const actionId = String(params?.action_id || '').trim();
       if (actionId) {
-        await runRegisteredAction(actionId);
+        await runRegisteredAction(actionId, params?.payload);
       }
       return null;
     },
