@@ -362,7 +362,7 @@ export function createMenuPluginDelegates(): PluginDelegates<PluginRuntimeContex
       return serializeMenus() as unknown as PluginMenuDefinition[];
     },
     async 'plugin.handle_action'(params: PluginHandleActionParams): Promise<unknown> {
-      const actionId = String(params?.action_id || '').trim();
+      const actionId = String(params?.action_id || params?.id || '').trim();
       if (actionId) {
         return await runRegisteredAction(actionId, params?.payload);
       }
