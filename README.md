@@ -219,11 +219,13 @@ CI release channels can publish prereleases to npm using dist-tags:
 
 - `latest`: stable releases
 - `beta`: builds from the `Beta` branch
+- `edge`: working builds from `Dev` push commits
 - `nightly`: scheduled builds from `Dev` when there are changes since the last nightly
 
 Examples:
 
 ```bash
+npm install @openvcs/sdk@edge
 npm install @openvcs/sdk@beta
 npm install @openvcs/sdk@nightly
 ```
