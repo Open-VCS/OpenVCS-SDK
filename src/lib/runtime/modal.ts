@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type {
-  ModalButtonDefinition,
   ModalButtonVariant,
   ModalContentAlign,
-  ModalInputDefinition,
+  ModalGridDefinition,
   ModalInputKind,
-  ModalListDefinition,
+  ModalHorizontalBoxDefinition,
   ModalListRowDefinition,
-  ModalSelectDefinition,
+  ModalVerticalBoxDefinition,
   ModalSelectOptionDefinition,
   PluginModalContentItem,
   PluginModalDefinition,
@@ -71,6 +70,30 @@ export interface ModalBuilderListOptions {
   items: ModalListRowDefinition[];
 }
 
+/** Describes the options accepted by `ModalBuilder.horizontalBox()`. */
+export interface ModalBuilderHorizontalBoxOptions {
+  /** Stores the spacing between children. */
+  gap?: string;
+  /** Stores the alignment hint for the main axis. */
+  align?: ModalContentAlign;
+  /** Stores whether children may wrap. */
+  wrap?: boolean;
+}
+
+/** Describes the options accepted by `ModalBuilder.verticalBox()`. */
+export interface ModalBuilderVerticalBoxOptions {
+  /** Stores the spacing between children. */
+  gap?: string;
+}
+
+/** Describes the options accepted by `ModalBuilder.grid()`. */
+export interface ModalBuilderGridOptions {
+  /** Stores the CSS grid column template. */
+  columns: string;
+  /** Stores the spacing between cells. */
+  gap?: string;
+}
+
 /** Builds a structured modal definition with a fluent class API. */
 export class ModalBuilder {
   private readonly definition: PluginModalDefinition;
@@ -97,6 +120,39 @@ export class ModalBuilder {
   /** Adds a separator to the modal body. */
   separator(): this {
     this.definition.content.push({ type: 'separator' });
+    return this;
+  }
+
+  /** Adds a horizontal box to the modal body. */
+  horizontalBox(content: PluginModalContentItem[], options: ModalBuilderHorizontalBoxOptions = {}): this {
+    this.definition.content.push({
+      type: 'horizontal-box',
+      content: cloneContent(content),
+      ...(options.gap ? { gap: options.gap } : {}),
+      ...(options.align ? { align: options.align } : {}),
+      ...(options.wrap !== undefined ? { wrap: options.wrap } : {}),
+    } as ModalHorizontalBoxDefinition);
+    return this;
+  }
+
+  /** Adds a vertical box to the modal body. */
+  verticalBox(content: PluginModalContentItem[], options: ModalBuilderVerticalBoxOptions = {}): this {
+    this.definition.content.push({
+      type: 'vertical-box',
+      content: cloneContent(content),
+      ...(options.gap ? { gap: options.gap } : {}),
+    } as ModalVerticalBoxDefinition);
+    return this;
+  }
+
+  /** Adds a grid container to the modal body. */
+  grid(content: PluginModalContentItem[], options: ModalBuilderGridOptions): this {
+    this.definition.content.push({
+      type: 'grid',
+      content: cloneContent(content),
+      columns: String(options.columns || '').trim(),
+      ...(options.gap ? { gap: options.gap } : {}),
+    } as ModalGridDefinition);
     return this;
   }
 
@@ -159,7 +215,7 @@ export class ModalBuilder {
   build(): PluginModalDefinition {
     return {
       title: this.definition.title,
-      content: this.definition.content.map((item) => ({ ...item })) as PluginModalContentItem[],
+      content: cloneContent(this.definition.content),
     };
   }
 
@@ -167,4 +223,37 @@ export class ModalBuilder {
   async open(): Promise<PluginModalDefinition> {
     return this.build();
   }
+}
+
+/** Clones modal content recursively so nested containers stay isolated. */
+function cloneContent(content: PluginModalContentItem[]): PluginModalContentItem[] {
+  return Array.isArray(content) ? content.map((item) => cloneItem(item)) : [];
+}
+
+/** Clones one modal content item recursively. */
+function cloneItem(item: PluginModalContentItem): PluginModalContentItem {
+  if (!item || typeof item !== 'object') return item;
+
+  if (item.type === 'horizontal-box') {
+    return {
+      ...item,
+      content: cloneContent(item.content),
+    } as ModalHorizontalBoxDefinition;
+  }
+
+  if (item.type === 'vertical-box') {
+    return {
+      ...item,
+      content: cloneContent(item.content),
+    } as ModalVerticalBoxDefinition;
+  }
+
+  if (item.type === 'grid') {
+    return {
+      ...item,
+      content: cloneContent(item.content),
+    } as ModalGridDefinition;
+  }
+
+  return { ...item };
 }

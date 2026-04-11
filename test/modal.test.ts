@@ -10,14 +10,83 @@ describe('ModalBuilder', () => {
   it('builds a structured modal definition', () => {
     const modal = new ModalBuilder('Manage Submodules')
       .text('Hello, World!')
-      .button('new-button', 'Test button, push me!', { align: 'centered' })
+      .verticalBox([
+        {
+          type: 'input',
+          id: 'path',
+          label: 'Submodule Path',
+          placeholder: 'libs/example',
+        },
+        {
+          type: 'grid',
+          columns: 'minmax(0, 1fr) minmax(0, 1fr)',
+          content: [
+            {
+              type: 'input',
+              id: 'name',
+              label: 'Submodule Name',
+              placeholder: 'example',
+            },
+            {
+              type: 'input',
+              id: 'branch',
+              label: 'Branch (optional)',
+              placeholder: 'main',
+            },
+          ],
+        },
+      ])
+      .horizontalBox(
+        [
+          { type: 'button', id: 'new-button', content: 'Test button, push me!', align: 'centered' },
+          { type: 'button', id: 'secondary-button', content: 'Refresh' },
+        ],
+        { align: 'centered', wrap: true },
+      )
       .build();
 
     assert.deepStrictEqual(modal, {
       title: 'Manage Submodules',
       content: [
         { type: 'text', content: 'Hello, World!' },
-        { type: 'button', id: 'new-button', content: 'Test button, push me!', align: 'centered' },
+        {
+          type: 'vertical-box',
+          content: [
+            {
+              type: 'input',
+              id: 'path',
+              label: 'Submodule Path',
+              placeholder: 'libs/example',
+            },
+            {
+              type: 'grid',
+              columns: 'minmax(0, 1fr) minmax(0, 1fr)',
+              content: [
+                {
+                  type: 'input',
+                  id: 'name',
+                  label: 'Submodule Name',
+                  placeholder: 'example',
+                },
+                {
+                  type: 'input',
+                  id: 'branch',
+                  label: 'Branch (optional)',
+                  placeholder: 'main',
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'horizontal-box',
+          align: 'centered',
+          wrap: true,
+          content: [
+            { type: 'button', id: 'new-button', content: 'Test button, push me!', align: 'centered' },
+            { type: 'button', id: 'secondary-button', content: 'Refresh' },
+          ],
+        },
       ],
     });
   });

@@ -44,6 +44,42 @@ export interface ModalSeparatorDefinition {
   type: 'separator';
 }
 
+/** Describes one horizontal box rendered inside a modal. */
+export interface ModalHorizontalBoxDefinition {
+  /** Always stores `horizontal-box`. */
+  type: 'horizontal-box';
+  /** Stores the ordered child content. */
+  content: PluginModalContentItem[];
+  /** Stores the optional spacing between children. */
+  gap?: string;
+  /** Stores the alignment hint along the main axis. */
+  align?: ModalContentAlign;
+  /** Stores whether children may wrap onto multiple rows. */
+  wrap?: boolean;
+}
+
+/** Describes one vertical box rendered inside a modal. */
+export interface ModalVerticalBoxDefinition {
+  /** Always stores `vertical-box`. */
+  type: 'vertical-box';
+  /** Stores the ordered child content. */
+  content: PluginModalContentItem[];
+  /** Stores the optional spacing between children. */
+  gap?: string;
+}
+
+/** Describes one grid rendered inside a modal. */
+export interface ModalGridDefinition {
+  /** Always stores `grid`. */
+  type: 'grid';
+  /** Stores the ordered child content. */
+  content: PluginModalContentItem[];
+  /** Stores the CSS grid column template. */
+  columns: string;
+  /** Stores the optional spacing between cells. */
+  gap?: string;
+}
+
 /** Describes one button rendered inside a modal body. */
 export interface ModalButtonItemDefinition extends ModalButtonDefinition {
   /** Always stores `button`. */
@@ -138,6 +174,9 @@ export interface ModalListDefinition {
 export type PluginModalContentItem =
   | ModalTextDefinition
   | ModalSeparatorDefinition
+  | ModalHorizontalBoxDefinition
+  | ModalVerticalBoxDefinition
+  | ModalGridDefinition
   | ModalButtonItemDefinition
   | ModalInputDefinition
   | ModalSelectDefinition

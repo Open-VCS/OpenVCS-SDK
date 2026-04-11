@@ -1,6 +1,6 @@
 {
   "name": "@openvcs/sdk",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "OpenVCS SDK CLI for plugin scaffolding and runtime asset builds",
   "license": "GPL-3.0-or-later",
   "homepage": "https://openvcs.app/",
