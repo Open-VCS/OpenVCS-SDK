@@ -35,8 +35,8 @@ interface StoredMenuState {
   id: string;
   label: string;
   hidden?: boolean;
-  /** Surface target for rendering (defaults to menubar for back-compat). */
-  surface?: 'menubar' | 'settings';
+  /** Surface target for rendering ('menubar' or 'settings'), must be explicitly provided. */
+  surface: MenuSurface;
   items: StoredMenuItem[];
 }
 
@@ -119,8 +119,8 @@ function placeMenuId(menuId: string, options?: MenubarMenuOptions): void {
 function ensureStoredMenu(
   menuId: string,
   label: string,
-  options?: MenubarMenuOptions,
-  surface: MenuSurface = 'menubar',
+  options: MenubarMenuOptions,
+  surface: MenuSurface,
 ): StoredMenuState {
   const id = normalizeMenuId(menuId);
   const safeLabel = String(label || '').trim() || id;
@@ -131,8 +131,7 @@ function ensureStoredMenu(
     menus.set(id, menu);
   } else {
     menu.label = safeLabel;
-    // Preserve surface if already set, otherwise use provided.
-    if (!menu.surface) menu.surface = surface;
+    menu.surface = surface;
   }
 
   placeMenuId(id, options);
@@ -214,7 +213,7 @@ function serializeMenus(): SerializedMenuDefinition[] {
         id: menu.id,
         label: menu.label,
         order: index + 1,
-        surface: menu.surface ?? 'menubar',
+        surface: menu.surface,
         elements: menu.items
           .map((item) => serializeMenuItem(item))
           .filter((item): item is SerializedMenuItem => Boolean(item)),
@@ -254,7 +253,11 @@ function createMenuHandle(menuId: string): MenuHandle {
       const action = String(item?.action || '').trim();
       if (!label || !action) return;
 
-      const menu = getStoredMenu(this.id) || ensureStoredMenu(this.id, this.id);
+      let menu = getStoredMenu(this.id);
+      if (!menu) {
+        // Default to menubar for internal menu handle operations.
+        menu = ensureStoredMenu(this.id, this.id, {}, 'menubar');
+      }
       insertMenuItem(menu, {
         kind: 'button',
         id: action,
@@ -264,7 +267,11 @@ function createMenuHandle(menuId: string): MenuHandle {
       }, item.before, item.after);
     },
     addSeparator(beforeAction?: string) {
-      const menu = getStoredMenu(this.id) || ensureStoredMenu(this.id, this.id);
+      let menu = getStoredMenu(this.id);
+      if (!menu) {
+        // Default to menubar for internal menu handle operations.
+        menu = ensureStoredMenu(this.id, this.id, {}, 'menubar');
+      }
       insertMenuItem(menu, {
         kind: 'separator',
         id: allocateSyntheticId(`${menu.id}-separator`),
@@ -303,15 +310,15 @@ export function getMenu(menuId: string): MenuHandle | null {
 /** Returns a menu by id, creating it if needed.
  * @param menuId - Menu identifier
  * @param label - User-visible label
- * @param options - Optional surface target ('menubar' or 'settings'), defaults to 'menubar'
+ * @param options - Surface target ('menubar' or 'settings'), MUST be explicitly provided
  */
 export function getOrCreateMenu(
   menuId: string,
   label: string,
-  options?: MenubarMenuOptions & { surface?: MenuSurface },
+  options: MenubarMenuOptions & { surface: MenuSurface },
 ): MenuHandle | null {
-  const surface = options?.surface ?? 'menubar';
-  const { surface: _, ...restOptions } = options ?? {};
+  const surface = options.surface;
+  const { surface: _, ...restOptions } = options;
   const stored = ensureStoredMenu(menuId, label, restOptions, surface);
   return createMenuHandle(stored.id);
 }
