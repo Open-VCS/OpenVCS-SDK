@@ -12,6 +12,7 @@ import type { PluginRuntimeContext } from './contracts.js';
 
 type MenubarMenuOptions = { before?: string; after?: string };
 type MenuEntryKind = 'button' | 'text' | 'separator';
+type MenuSurface = 'menubar' | 'settings';
 
 type OpenVCSGlobal = typeof globalThis & {
   OpenVCS?: {
@@ -34,6 +35,8 @@ interface StoredMenuState {
   id: string;
   label: string;
   hidden?: boolean;
+  /** Surface target for rendering (defaults to menubar for back-compat). */
+  surface?: 'menubar' | 'settings';
   items: StoredMenuItem[];
 }
 
@@ -48,6 +51,7 @@ interface SerializedMenuDefinition {
   id: string;
   label: string;
   order: number;
+  surface: 'menubar' | 'settings';
   elements: SerializedMenuItem[];
 }
 
@@ -116,16 +120,19 @@ function ensureStoredMenu(
   menuId: string,
   label: string,
   options?: MenubarMenuOptions,
+  surface: MenuSurface = 'menubar',
 ): StoredMenuState {
   const id = normalizeMenuId(menuId);
   const safeLabel = String(label || '').trim() || id;
   let menu = menus.get(id);
 
   if (!menu) {
-    menu = { id, label: safeLabel, items: [] };
+    menu = { id, label: safeLabel, surface, items: [] };
     menus.set(id, menu);
   } else {
     menu.label = safeLabel;
+    // Preserve surface if already set, otherwise use provided.
+    if (!menu.surface) menu.surface = surface;
   }
 
   placeMenuId(id, options);
@@ -207,6 +214,7 @@ function serializeMenus(): SerializedMenuDefinition[] {
         id: menu.id,
         label: menu.label,
         order: index + 1,
+        surface: menu.surface ?? 'menubar',
         elements: menu.items
           .map((item) => serializeMenuItem(item))
           .filter((item): item is SerializedMenuItem => Boolean(item)),
@@ -292,17 +300,24 @@ export function getMenu(menuId: string): MenuHandle | null {
   return createMenuHandle(stored.id);
 }
 
-/** Returns a menu by id, creating it if needed. */
-export function getOrCreateMenu(menuId: string, label: string): MenuHandle | null {
-  const stored = ensureStoredMenu(menuId, label);
+/** Returns a menu by id, creating it if needed.
+ * @param menuId - Menu identifier
+ * @param label - User-visible label
+ * @param options - Optional surface target ('menubar' or 'settings'), defaults to 'menubar'
+ */
+export function getOrCreateMenu(
+  menuId: string,
+  label: string,
+  options?: MenubarMenuOptions & { surface?: MenuSurface },
+): MenuHandle | null {
+  const surface = options?.surface ?? 'menubar';
+  const { surface: _, ...restOptions } = options ?? {};
+  const stored = ensureStoredMenu(menuId, label, restOptions, surface);
   return createMenuHandle(stored.id);
 }
 
-/** Creates a menu at a specific position. */
-export function createMenu(menuId: string, label: string, options?: MenubarMenuOptions): MenuHandle | null {
-  const stored = ensureStoredMenu(menuId, label, options);
-  return createMenuHandle(stored.id);
-}
+/** Creates a menu at a specific position (alias for getOrCreateMenu). */
+export const createMenu = getOrCreateMenu;
 
 /** Adds one item to a menu. */
 export function addMenuItem(menuId: string, item: MenubarItem): void {
