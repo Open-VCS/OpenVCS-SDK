@@ -303,6 +303,14 @@ export abstract class VcsDelegateBase<
     return this.unimplemented('stagePatch');
   }
 
+  /** Handles `vcs.stage_paths`. */
+  stagePaths(
+    _params: VcsTypes.VcsStagePathsParams,
+    _context: TContext,
+  ): VcsHandlerResult<null> {
+    return this.unimplemented('stagePaths');
+  }
+
   /** Handles `vcs.discard_paths`. */
   discardPaths(
     _params: VcsTypes.VcsDiscardPathsParams,

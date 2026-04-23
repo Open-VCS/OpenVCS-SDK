@@ -298,6 +298,12 @@ export interface VcsStagePatchParams extends VcsSessionParams {
   patch: string;
 }
 
+/** Describes params for staging repository-relative paths into the index. */
+export interface VcsStagePathsParams extends VcsSessionParams {
+  /** Stores the paths to stage. */
+  paths?: string[];
+}
+
 /** Describes params for discarding path changes. */
 export interface VcsDiscardPathsParams extends VcsSessionParams {
   /** Stores the paths to discard. */
@@ -518,6 +524,8 @@ export interface VcsDelegates<TContext = unknown> {
   >;
   /** Handles `vcs.stage_patch`. */
   'vcs.stage_patch'?: RpcMethodHandler<VcsStagePatchParams, null, TContext>;
+  /** Handles `vcs.stage_paths`. */
+  'vcs.stage_paths'?: RpcMethodHandler<VcsStagePathsParams, null, TContext>;
   /** Handles `vcs.discard_paths`. */
   'vcs.discard_paths'?: RpcMethodHandler<VcsDiscardPathsParams, null, TContext>;
   /** Handles `vcs.apply_reverse_patch`. */
