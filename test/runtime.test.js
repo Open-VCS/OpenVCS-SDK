@@ -5,7 +5,17 @@ const test = require("node:test");
 const {
   bootstrapPluginModule,
   createPluginRuntime,
+  resetMenuRegistry,
 } = require("../lib/runtime");
+const {
+  addMenuItem,
+  addMenuSeparator,
+  createMenu,
+  getMenu,
+  getOrCreateMenu,
+  registerAction,
+  removeMenu,
+} = require("../lib/runtime/menu");
 const {
   parseFramedMessages,
   serializeFramedMessage,
@@ -232,4 +242,120 @@ test("bootstrapPluginModule rejects when OnPluginStart throws", async () => {
       }),
     /plugin startup failed/
   );
+});
+
+test("resetMenuRegistry clears all menus and action handlers", () => {
+  createMenu("reset-test", "Reset Test", { surface: "menubar" });
+  registerAction("reset-test-action", () => "ok");
+  assert.notEqual(getMenu("reset-test"), null);
+
+  resetMenuRegistry();
+
+  assert.equal(getMenu("reset-test"), null);
+  // After reset, addMenuItem/addMenuSeparator must silently no-op for unknown menus.
+});
+
+test("addMenuItem silently ignores when menu does not exist", () => {
+  resetMenuRegistry();
+  // Must not throw.
+  addMenuItem("nonexistent-menu", {
+    label: "Irrelevant",
+    action: "test-action",
+  });
+  assert.equal(getMenu("nonexistent-menu"), null);
+});
+
+test("addMenuSeparator silently ignores when menu does not exist", () => {
+  resetMenuRegistry();
+  // Must not throw.
+  addMenuSeparator("nonexistent-menu");
+  assert.equal(getMenu("nonexistent-menu"), null);
+});
+
+test("addMenuItem and addMenuSeparator do not implicitly create menus", () => {
+  resetMenuRegistry();
+  createMenu("existing-menu", "Existing Menu", { surface: "menubar" });
+  addMenuItem("existing-menu", {
+    label: "Test Item",
+    action: "test-action",
+  });
+  addMenuSeparator("existing-menu");
+  assert.notEqual(getMenu("existing-menu"), null);
+  // Verify state was not leaked from prior tests.
+  assert.equal(getMenu("reset-test"), null);
+  removeMenu("existing-menu");
+});
+
+test("plugin.handle_action dispatches only on action_id (not id)", async () => {
+  resetMenuRegistry();
+  // Register after reset so the handler is present.
+  registerAction("test-action-id", (payload) => {
+    if (typeof payload === "object" && payload != null) {
+      return (payload).message;
+    }
+    return null;
+  });
+
+  const harness = createRuntimeHarness({
+    plugin: {},
+  });
+
+  // Valid dispatch via action_id.
+  const valid = await harness.request({
+    jsonrpc: "2.0",
+    id: 10,
+    method: "plugin.handle_action",
+    params: { action_id: "test-action-id", payload: { message: "hello" } },
+  });
+  assert.deepEqual(valid, [
+    { jsonrpc: "2.0", id: 10, result: { message: "hello" } },
+  ]);
+
+  // Empty params returns null.
+  const empty = await harness.request({
+    jsonrpc: "2.0",
+    id: 11,
+    method: "plugin.handle_action",
+    params: {},
+  });
+  assert.deepEqual(empty, [{ jsonrpc: "2.0", id: 11, result: null }]);
+
+  // Unknown action returns null.
+  const unknown = await harness.request({
+    jsonrpc: "2.0",
+    id: 12,
+    method: "plugin.handle_action",
+    params: { action_id: "nonexistent-action" },
+  });
+  assert.deepEqual(unknown, [{ jsonrpc: "2.0", id: 12, result: null }]);
+});
+
+test("bootstrapPluginModule resets menu registry before OnPluginStart", async () => {
+  resetMenuRegistry();
+  // Pre-populate state that should be cleared.
+  createMenu("leak-test", "Leak Test", { surface: "menubar" });
+  registerAction("leak-action", () => "leaked");
+
+  const stdin = new EventEmitter();
+  const chunks = [];
+  const stdout = {
+    write(chunk) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      return true;
+    },
+  };
+
+  await bootstrapPluginModule({
+    modulePath: "./plugin.js",
+    transport: { stdin, stdout },
+    async importPluginModule() {
+      return {
+        PluginDefinition: { plugin: {} },
+        OnPluginStart() {},
+      };
+    },
+  });
+
+  // Menu from before bootstrap must not be present.
+  assert.equal(getMenu("leak-test"), null);
 });

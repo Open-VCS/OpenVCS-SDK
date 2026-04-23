@@ -12,6 +12,7 @@ import type { PluginRuntimeContext } from './contracts.js';
 
 type MenubarMenuOptions = { before?: string; after?: string };
 type MenuEntryKind = 'button' | 'text' | 'separator';
+/** UI surface targeted by a menu: 'menubar' (top-level bar) or 'settings' (preferences panel). */
 type MenuSurface = 'menubar' | 'settings';
 
 type OpenVCSGlobal = typeof globalThis & {
@@ -27,6 +28,7 @@ interface StoredMenuItem {
   label: string;
   title?: string;
   content?: string;
+  /** Action id dispatched back to the plugin when the user activates this item. */
   action?: string;
   hidden?: boolean;
 }
@@ -59,6 +61,17 @@ const menus = new Map<string, StoredMenuState>();
 const menuOrder: string[] = [];
 const actionHandlers = new Map<string, (...args: unknown[]) => unknown>();
 let syntheticId = 0;
+
+/** Clears all registered menus and action handlers.
+ * @internal
+ * Called by bootstrap to prevent state leaking between in-process plugin setup runs.
+ */
+export function resetMenuRegistry(): void {
+  menus.clear();
+  menuOrder.splice(0, menuOrder.length);
+  actionHandlers.clear();
+  syntheticId = 0;
+}
 
 /** Returns the host-side OpenVCS helper, when the environment provides one. */
 function getOpenVCS() {
@@ -326,13 +339,16 @@ export function getOrCreateMenu(
 /** Creates a menu at a specific position (alias for getOrCreateMenu). */
 export const createMenu = getOrCreateMenu;
 
-/** Adds one item to a menu. */
+/** Adds one item to a menu, silently no-op if the menu does not exist. */
 export function addMenuItem(menuId: string, item: MenubarItem): void {
-  createMenuHandle(menuId).addItem(item);
+  const handle = createMenuHandle(menuId);
+  if (!getStoredMenu(menuId)) return;
+  handle.addItem(item);
 }
 
-/** Adds one separator to a menu. */
+/** Adds one separator to a menu, silently no-op if the menu does not exist. */
 export function addMenuSeparator(menuId: string, beforeAction?: string): void {
+  if (!getStoredMenu(menuId)) return;
   createMenuHandle(menuId).addSeparator(beforeAction);
 }
 
@@ -384,7 +400,7 @@ export function createMenuPluginDelegates(): PluginDelegates<PluginRuntimeContex
       return serializeMenus() as unknown as PluginMenuDefinition[];
     },
     async 'plugin.handle_action'(params: PluginHandleActionParams): Promise<unknown> {
-      const actionId = String(params?.action_id || params?.id || '').trim();
+      const actionId = String(params?.action_id || '').trim();
       if (actionId) {
         return await runRegisteredAction(actionId, params?.payload);
       }

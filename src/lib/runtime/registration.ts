@@ -16,6 +16,7 @@ import type {
 import { createPluginRuntime } from './factory';
 import {
   createMenuPluginDelegates,
+  resetMenuRegistry,
   runRegisteredAction,
 } from './menu';
 
@@ -113,6 +114,9 @@ export async function bootstrapPluginModule(
       `plugin module '${options.modulePath}' must export OnPluginStart()`,
     );
   }
+
+  // Reset internal state so repeated in-process setups do not leak menu or action state.
+  resetMenuRegistry();
 
   try {
     await onPluginStart();
