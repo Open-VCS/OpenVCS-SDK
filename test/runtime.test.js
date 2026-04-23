@@ -11,6 +11,7 @@ const {
   addMenuItem,
   addMenuSeparator,
   createMenu,
+  getMenu,
   registerAction,
   removeMenu,
   hideMenu,
