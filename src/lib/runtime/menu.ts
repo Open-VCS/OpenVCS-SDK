@@ -328,12 +328,16 @@ export const createMenu = getOrCreateMenu;
 
 /** Adds one item to a menu. */
 export function addMenuItem(menuId: string, item: MenubarItem): void {
-  createMenuHandle(menuId).addItem(item);
+  const handle = createMenuHandle(menuId);
+  if (!handle) return;
+  handle.addItem(item);
 }
 
 /** Adds one separator to a menu. */
 export function addMenuSeparator(menuId: string, beforeAction?: string): void {
-  createMenuHandle(menuId).addSeparator(beforeAction);
+  const handle = createMenuHandle(menuId);
+  if (!handle) return;
+  handle.addSeparator(beforeAction);
 }
 
 /** Removes one menu from the registry. */
@@ -374,7 +378,10 @@ export function invoke<T = unknown>(cmd: string, args?: unknown): Promise<T> {
 /** Emits a notification when the host helper is available. */
 export function notify(msg: string): void {
   const openvcs = getOpenVCS();
-  openvcs?.notify(msg);
+  if (!openvcs) {
+    throw new Error('OpenVCS host is not available in this runtime');
+  }
+  openvcs.notify(msg);
 }
 
 /** Builds SDK delegates from the local menu/action registries. */
