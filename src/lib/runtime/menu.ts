@@ -329,15 +329,14 @@ export function getMenu(menuId: string): MenuHandle | null {
 /** Returns a menu by id, creating it if needed.
  * @param menuId - Menu identifier.
  * @param label - User-visible label.
- * @param options - Placement options. `surface` is required so the runtime can serialize the menu for the correct host UI surface.
+ * @param options - Placement options, including the required `surface` so the runtime can serialize the menu for the correct host UI surface.
  */
 export function getOrCreateMenu(
   menuId: string,
   label: string,
   options: MenubarMenuOptions & { surface: MenuSurface },
 ): MenuHandle | null {
-  const surface = options.surface;
-  const { surface: _, ...restOptions } = options;
+  const { surface, ...restOptions } = options;
   const stored = ensureStoredMenu(menuId, label, restOptions, surface);
   return createMenuHandle(stored.id);
 }
