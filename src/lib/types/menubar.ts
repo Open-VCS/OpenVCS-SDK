@@ -23,8 +23,8 @@ export interface MenubarMenu {
   id: string;
   /** Adds an item to this menu. */
   addItem(item: MenubarItem): void;
-  /** Adds a separator to this menu. */
-  addSeparator(beforeAction?: string): void;
+  /** Adds a separator to this menu before or after an existing action. */
+  addSeparator(beforeAction?: string, afterAction?: string): void;
   /** Removes an item by action ID. */
   removeItem(actionId: string): void;
   /** Hides an item by action ID. */

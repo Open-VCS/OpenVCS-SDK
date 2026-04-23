@@ -16,6 +16,8 @@ import type {
 import { createPluginRuntime } from './factory';
 import {
   createMenuPluginDelegates,
+  hasRegisteredAction,
+  requireActionId,
   resetMenuRegistry,
   runRegisteredAction,
 } from './menu';
@@ -80,8 +82,8 @@ export function createRegisteredPluginRuntime(
         ];
       },
       'plugin.handle_action': async (params, ctx) => {
-        const actionId = String(params?.action_id || '').trim();
-        if (actionId) {
+        const actionId = requireActionId(params);
+        if (hasRegisteredAction(actionId)) {
           const result = await runRegisteredAction(actionId, params?.payload);
           if (result !== null && result !== undefined) {
             return result;
@@ -90,6 +92,7 @@ export function createRegisteredPluginRuntime(
         if (explicitHandleAction) {
           return explicitHandleAction(params, ctx);
         }
+        ctx.host.info(`plugin.handle_action ignored unhandled action_id '${actionId}'`);
         return null;
       },
     },
