@@ -5,13 +5,16 @@ import type { MenubarItem } from '../types/menubar.js';
 import type {
   PluginDelegates,
   PluginHandleActionParams,
+  PluginMenuElement,
   PluginMenuDefinition,
 } from '../types/plugin.js';
 
 import type { PluginRuntimeContext } from './contracts.js';
+import { pluginError } from './errors.js';
 
 type MenubarMenuOptions = { before?: string; after?: string };
 type MenuEntryKind = 'button' | 'text' | 'separator';
+/** UI surface targeted by a menu: 'menubar' (top-level bar) or 'settings' (preferences panel). */
 type MenuSurface = 'menubar' | 'settings';
 
 type OpenVCSGlobal = typeof globalThis & {
@@ -27,6 +30,7 @@ interface StoredMenuItem {
   label: string;
   title?: string;
   content?: string;
+  /** Action id dispatched back to the plugin when the user activates this item. */
   action?: string;
   hidden?: boolean;
 }
@@ -40,25 +44,33 @@ interface StoredMenuState {
   items: StoredMenuItem[];
 }
 
-interface SerializedMenuItem {
-  type: 'button' | 'text';
-  id: string;
-  label?: string;
-  content?: string;
-}
-
-interface SerializedMenuDefinition {
-  id: string;
-  label: string;
-  order: number;
-  surface: 'menubar' | 'settings';
-  elements: SerializedMenuItem[];
-}
-
 const menus = new Map<string, StoredMenuState>();
 const menuOrder: string[] = [];
 const actionHandlers = new Map<string, (...args: unknown[]) => unknown>();
 let syntheticId = 0;
+
+/** Validates and returns the incoming plugin action id. */
+export function requireActionId(params: PluginHandleActionParams): string {
+  const actionId = typeof params?.action_id === 'string' ? params.action_id.trim() : '';
+  if (!actionId) {
+    throw pluginError(
+      'plugin-invalid-action-id',
+      'plugin.handle_action requires params.action_id to be a non-empty string',
+    );
+  }
+  return actionId;
+}
+
+/** Clears all registered menus and action handlers.
+ * @internal
+ * Called by bootstrap to prevent state leaking between in-process plugin setup runs.
+ */
+export function resetMenuRegistry(): void {
+  menus.clear();
+  menuOrder.splice(0, menuOrder.length);
+  actionHandlers.clear();
+  syntheticId = 0;
+}
 
 /** Returns the host-side OpenVCS helper, when the environment provides one. */
 function getOpenVCS() {
@@ -177,7 +189,7 @@ function insertMenuItem(menu: StoredMenuState, item: StoredMenuItem, before?: st
 }
 
 /** Converts one stored item into a serializable menu payload element. */
-function serializeMenuItem(item: StoredMenuItem): SerializedMenuItem | null {
+function serializeMenuItem(item: StoredMenuItem): PluginMenuElement | null {
   if (item.hidden) return null;
 
   if (item.kind === 'separator') {
@@ -204,7 +216,7 @@ function serializeMenuItem(item: StoredMenuItem): SerializedMenuItem | null {
 }
 
 /** Serializes the local registry into plugin menu payloads. */
-function serializeMenus(): SerializedMenuDefinition[] {
+function serializeMenus(): PluginMenuDefinition[] {
   return menuOrder
     .map((menuId, index) => {
       const menu = menus.get(menuId);
@@ -216,10 +228,17 @@ function serializeMenus(): SerializedMenuDefinition[] {
         surface: menu.surface,
         elements: menu.items
           .map((item) => serializeMenuItem(item))
-          .filter((item): item is SerializedMenuItem => Boolean(item)),
+          .filter((item): item is PluginMenuElement => Boolean(item)),
       };
     })
-    .filter((menu): menu is SerializedMenuDefinition => Boolean(menu));
+    .filter((menu): menu is PluginMenuDefinition => Boolean(menu));
+}
+
+/** Returns whether one registered action handler exists. */
+export function hasRegisteredAction(actionId: string): boolean {
+  const id = String(actionId || '').trim();
+  if (!id) return false;
+  return actionHandlers.has(id);
 }
 
 /** Runs a registered action handler by id. */
@@ -236,7 +255,7 @@ export async function runRegisteredAction(actionId: string, ...args: unknown[]):
 export interface MenuHandle {
   id: string;
   addItem(item: MenubarItem): void;
-  addSeparator(beforeAction?: string): void;
+  addSeparator(beforeAction?: string, afterAction?: string): void;
   removeItem(actionId: string): void;
   hideItem(actionId: string): void;
   showItem(actionId: string): void;
@@ -266,7 +285,7 @@ function createMenuHandle(menuId: string): MenuHandle {
         action,
       }, item.before, item.after);
     },
-    addSeparator(beforeAction?: string) {
+    addSeparator(beforeAction?: string, afterAction?: string) {
       let menu = getStoredMenu(this.id);
       if (!menu) {
         // Default to menubar for internal menu handle operations.
@@ -277,7 +296,7 @@ function createMenuHandle(menuId: string): MenuHandle {
         id: allocateSyntheticId(`${menu.id}-separator`),
         label: 'Separator',
         content: '—',
-      }, beforeAction);
+      }, beforeAction, afterAction);
     },
     removeItem(actionId: string) {
       const menu = getStoredMenu(this.id);
@@ -308,17 +327,16 @@ export function getMenu(menuId: string): MenuHandle | null {
 }
 
 /** Returns a menu by id, creating it if needed.
- * @param menuId - Menu identifier
- * @param label - User-visible label
- * @param options - Surface target ('menubar' or 'settings'), MUST be explicitly provided
+ * @param menuId - Menu identifier.
+ * @param label - User-visible label.
+ * @param options - Placement options, including the required `surface` so the runtime can serialize the menu for the correct host UI surface.
  */
 export function getOrCreateMenu(
   menuId: string,
   label: string,
   options: MenubarMenuOptions & { surface: MenuSurface },
 ): MenuHandle | null {
-  const surface = options.surface;
-  const { surface: _, ...restOptions } = options;
+  const { surface, ...restOptions } = options;
   const stored = ensureStoredMenu(menuId, label, restOptions, surface);
   return createMenuHandle(stored.id);
 }
@@ -326,18 +344,17 @@ export function getOrCreateMenu(
 /** Creates a menu at a specific position (alias for getOrCreateMenu). */
 export const createMenu = getOrCreateMenu;
 
-/** Adds one item to a menu. */
+/** Adds one item to a menu, silently no-op if the menu does not exist. */
 export function addMenuItem(menuId: string, item: MenubarItem): void {
   const handle = createMenuHandle(menuId);
-  if (!handle) return;
+  if (!getStoredMenu(menuId)) return;
   handle.addItem(item);
 }
 
-/** Adds one separator to a menu. */
-export function addMenuSeparator(menuId: string, beforeAction?: string): void {
-  const handle = createMenuHandle(menuId);
-  if (!handle) return;
-  handle.addSeparator(beforeAction);
+/** Adds one separator to a menu, silently no-op if the menu does not exist. */
+export function addMenuSeparator(menuId: string, beforeAction?: string, afterAction?: string): void {
+  if (!getStoredMenu(menuId)) return;
+  createMenuHandle(menuId).addSeparator(beforeAction, afterAction);
 }
 
 /** Removes one menu from the registry. */
@@ -388,14 +405,10 @@ export function notify(msg: string): void {
 export function createMenuPluginDelegates(): PluginDelegates<PluginRuntimeContext> {
   return {
     async 'plugin.get_menus'(): Promise<PluginMenuDefinition[]> {
-      return serializeMenus() as unknown as PluginMenuDefinition[];
+      return serializeMenus();
     },
     async 'plugin.handle_action'(params: PluginHandleActionParams): Promise<unknown> {
-      const actionId = String(params?.action_id || params?.id || '').trim();
-      if (actionId) {
-        return await runRegisteredAction(actionId, params?.payload);
-      }
-      return null;
+      return await runRegisteredAction(requireActionId(params), params?.payload);
     },
   };
 }
