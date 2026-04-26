@@ -39,6 +39,7 @@ export {
   hideMenu,
   showMenu,
   registerAction,
+  resetMenuRegistry,
   invoke,
   notify,
 } from './menu';

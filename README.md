@@ -1,8 +1,7 @@
 # @openvcs/sdk
-
-[![Nightly](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/nightly.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/nightly.yml)
+[![Nightly](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/publish.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/publish.yml)
 [![Dev](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/ci.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/ci.yml)
-[![Stable](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/release.yml/badge.svg?branch=Stable)](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/release.yml)
+[![Publish](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/publish.yml/badge.svg?branch=Stable)](https://github.com/Open-VCS/OpenVCS-SDK/actions/workflows/publish.yml)
 
 OpenVCS SDK for npm-based plugin development.
 
@@ -215,6 +214,21 @@ npx openvcs init --help
 
 Publishing is outside the SDK CLI. Use your normal npm workflow once `openvcs build`
 has produced the runtime assets you want to ship.
+
+CI release channels can publish prereleases to npm using dist-tags:
+
+- `latest`: stable releases
+- `beta`: builds from the `Beta` branch
+- `edge`: working builds from `Dev` push commits
+- `nightly`: scheduled builds from `Dev` when there are changes since the last nightly
+
+Examples:
+
+```bash
+npm install @openvcs/sdk@edge
+npm install @openvcs/sdk@beta
+npm install @openvcs/sdk@nightly
+```
 
 ## License
 

@@ -22,17 +22,52 @@ export interface PluginInitializeResult {
 /** Describes one optional override returned by a custom initialize handler. */
 export type PluginInitializeOverride = Partial<PluginInitializeResult>;
 
+/** Describes the UI surface targeted by one plugin menu definition. */
+export type PluginMenuSurface = 'menubar' | 'settings';
+
+/** Describes one static text element contributed to a plugin menu. */
+export interface PluginMenuTextElement {
+  /** Stores the serialized element kind. */
+  type: 'text';
+  /** Stores the stable plugin-local element id. */
+  id: string;
+  /** Stores the rendered text content. */
+  content: string;
+}
+
+/** Describes one button element contributed to a plugin menu. */
+export interface PluginMenuButtonElement {
+  /** Stores the serialized element kind. */
+  type: 'button';
+  /** Stores the stable action id dispatched back to the plugin. */
+  id: string;
+  /** Stores the user-visible button label. */
+  label: string;
+}
+
+/** Describes one renderable plugin menu element. */
+export type PluginMenuElement = PluginMenuTextElement | PluginMenuButtonElement;
+
 /** Describes one plugin-contributed menu definition. */
-export type PluginMenuDefinition = Record<string, unknown>;
+export interface PluginMenuDefinition {
+  /** Stores the stable plugin-local menu id. */
+  id: string;
+  /** Stores the user-visible menu label. */
+  label: string;
+  /** Stores the display ordering hint assigned by the runtime. */
+  order: number;
+  /** Stores the target UI surface for the menu. */
+  surface: PluginMenuSurface;
+  /** Stores the renderable elements contributed under the menu. */
+  elements: PluginMenuElement[];
+}
 
 /** Describes one plugin settings value payload. */
 export type PluginSettingsValue = Record<string, unknown>;
 
 /** Describes the params shape for plugin action handling. */
 export interface PluginHandleActionParams extends RequestParams {
-  /** Stores the action id selected by the user when provided by the transport. */
-  id?: string;
-  /** Stores the action id selected by the user. */
+  /** Stores the action id selected by the user. Runtime handlers require a non-empty string. */
   action_id?: string;
   /** Stores an optional payload supplied by the triggering UI. */
   payload?: Record<string, unknown>;

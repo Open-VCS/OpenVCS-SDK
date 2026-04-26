@@ -9,3 +9,5 @@ node_modules/
 /bin/*.d.ts
 /lib/**/*.js
 /lib/**/*.d.ts
+/.logs
+/.opencode
