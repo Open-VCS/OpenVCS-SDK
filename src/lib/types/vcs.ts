@@ -190,6 +190,8 @@ export interface StatusPayload {
   ahead: number;
   /** Stores the local branch behind count relative to its upstream. */
   behind: number;
+  /** Stores whether the current branch has a tracking reference on a remote. */
+  branch_on_remote: boolean;
 }
 
 /** Describes the complete parsed status result. */
