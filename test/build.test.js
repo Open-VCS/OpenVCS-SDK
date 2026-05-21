@@ -52,6 +52,10 @@ test("parseBuildArgs help returns usage error", () => {
   assert.throws(() => parseBuildArgs(["--help"]), /openvcs build \[args\]/);
 });
 
+test("parseBuildArgs rejects unknown flags", () => {
+  assert.throws(() => parseBuildArgs(["--wat"]), /unknown flag: --wat/);
+});
+
 test("buildPluginAssets no-ops for theme-only plugins", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
@@ -158,6 +162,10 @@ test("readManifest reports missing and invalid package manifests", () => {
   writeJson(path.join(badId, "package.json"), { openvcs: { id: "bad/id" } });
   assert.throws(() => readManifest(badId), /must not contain path separators/);
 
+  const missingId = path.join(root, "missing-id");
+  writeJson(path.join(missingId, "package.json"), { openvcs: {} });
+  assert.throws(() => readManifest(missingId), /missing openvcs\.id/);
+
   cleanupTempDir(root);
 });
 
@@ -232,6 +240,30 @@ test("validateGeneratedBootstrapTargets rejects case-insensitive collisions", ()
     /must not be plugin\.js/
   );
 
+  cleanupTempDir(root);
+});
+
+test("validateGeneratedBootstrapTargets no-ops without module exec and rejects missing compiled module", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  fs.mkdirSync(path.join(pluginDir, "bin"), { recursive: true });
+
+  assert.doesNotThrow(() => validateGeneratedBootstrapTargets(pluginDir, undefined));
+  assert.throws(() => validateGeneratedBootstrapTargets(pluginDir, "openvcs-plugin.js"), /compiled plugin module not found/);
+
+  cleanupTempDir(root);
+});
+
+test("generateModuleBootstrap tolerates invalid package json and uses extension for ESM", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  writeText(path.join(pluginDir, "package.json"), "{");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "bootstrap.mjs"), "");
+
+  generateModuleBootstrap(pluginDir, "bootstrap.mjs");
+
+  assert.match(fs.readFileSync(path.join(pluginDir, "bin", "bootstrap.mjs"), "utf8"), /^import/m);
   cleanupTempDir(root);
 });
 

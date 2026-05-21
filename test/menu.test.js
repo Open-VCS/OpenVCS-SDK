@@ -45,6 +45,35 @@ test("menu ordering supports before and after placement", async () => {
   assert.deepEqual(menus.map((menu) => menu.surface), ["menubar", "menubar", "settings"]);
 });
 
+test("menu ordering falls back when requested anchors are missing", async () => {
+  resetMenuRegistry();
+  createMenu("first", "First", { surface: "menubar", after: "missing" });
+  createMenu("second", "Second", { surface: "menubar", before: "missing" });
+  createMenu("first", "First Updated", { surface: "settings" });
+
+  const menus = await menuResult();
+
+  assert.deepEqual(menus.map((menu) => menu.id), ["second", "first"]);
+  assert.equal(menus[1].label, "First Updated");
+  assert.equal(menus[1].surface, "settings");
+});
+
+test("menu item insertion supports before anchors and ignores invalid items", async () => {
+  resetMenuRegistry();
+  const menu = createMenu("insert", "Insert", { surface: "menubar" });
+  menu.addItem({ label: "Last", action: "last" });
+  menu.addItem({ label: "First", action: "first", before: "last" });
+  menu.addItem({ label: "", action: "ignored" });
+  menu.addItem({ label: "Ignored", action: "" });
+
+  const menus = await menuResult();
+
+  assert.deepEqual(menus[0].elements, [
+    { type: "button", id: "first", label: "First" },
+    { type: "button", id: "last", label: "Last" },
+  ]);
+});
+
 test("menu handle can remove, hide, and show individual items", async () => {
   resetMenuRegistry();
   const menu = createMenu("tools", "Tools", { surface: "menubar" });

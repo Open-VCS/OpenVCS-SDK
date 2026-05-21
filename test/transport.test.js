@@ -56,3 +56,16 @@ test("writeFramedMessage waits for drain when stream backpressures", async () =>
 
   assert.equal(wrote, true);
 });
+
+test("writeFramedMessage reports writer failures without throwing", async () => {
+  const originalError = console.error;
+  const messages = [];
+  console.error = (message) => messages.push(String(message));
+  try {
+    await writeFramedMessage({ write() { throw new Error("closed"); } }, { ok: true });
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.match(messages[0], /failed to write framed message: closed/);
+});

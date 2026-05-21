@@ -43,3 +43,15 @@ test("runCli passes through build parser errors", async () => {
 test("runCli rejects invalid init arguments", async () => {
   await assert.rejects(() => runCli(["init", "--bad"]), /unknown argument for init/);
 });
+
+test("runCli direct help branches write subcommand usage", async () => {
+  const buildHelp = await captureCli(["build", "--help"]);
+  const initHelp = await captureCli(["init", "--help"]);
+
+  assert.match(buildHelp.stdout, /openvcs build \[args\]/);
+  assert.match(initHelp.stdout, /Usage: openvcs init/);
+});
+
+test("runCli direct unknown command branch rejects", async () => {
+  await assert.rejects(() => runCli(["wat"]), /unknown command: wat/);
+});
