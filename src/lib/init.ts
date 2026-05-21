@@ -46,6 +46,20 @@ function shouldUseWindowsShell(program: string): boolean {
   return normalized === "npm" || normalized.endsWith(".cmd") || normalized.endsWith(".bat");
 }
 
+function quoteCmdArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function normalizeSpawnCommand(program: string, args: string[]): { program: string; args: string[] } {
+  if (!shouldUseWindowsShell(program)) {
+    return { program, args };
+  }
+
+  const shell = process.env.ComSpec || "cmd.exe";
+  const commandLine = [program, ...args].map(quoteCmdArg).join(" ");
+  return { program: shell, args: ["/d", "/s", "/c", commandLine] };
+}
+
 export function initUsage(commandName = "openvcs"): string {
   return `Usage: ${commandName} init [--theme] [target-dir]\n\nOptions:\n  --theme                Start with a theme-only plugin template\n`;
 }
@@ -214,10 +228,11 @@ async function collectAnswers(
 }
 
 function runNpmInstall(targetDir: string): void {
-  const result = spawnSync(npmExecutable(), ["install"], {
+  const spawn = normalizeSpawnCommand(npmExecutable(), ["install"]);
+  const result = spawnSync(spawn.program, spawn.args, {
     cwd: targetDir,
-    shell: shouldUseWindowsShell(npmExecutable()),
     stdio: "inherit",
+    windowsHide: true,
   });
   if (result.error) {
     throw new Error(`failed to spawn npm install in ${targetDir}: ${result.error.message}`);

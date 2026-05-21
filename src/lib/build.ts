@@ -49,6 +49,20 @@ export function shouldUseWindowsShell(program: string): boolean {
   return normalized === "npm" || normalized.endsWith(".cmd") || normalized.endsWith(".bat");
 }
 
+function quoteCmdArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function normalizeSpawnCommand(program: string, args: string[]): { program: string; args: string[] } {
+  if (!shouldUseWindowsShell(program)) {
+    return { program, args };
+  }
+
+  const shell = process.env.ComSpec || "cmd.exe";
+  const commandLine = [program, ...args].map(quoteCmdArg).join(" ");
+  return { program: shell, args: ["/d", "/s", "/c", commandLine] };
+}
+
 /** Formats help text for the build command. */
 export function buildUsage(commandName = "openvcs"): string {
   return `${commandName} build [args]\n\n  --plugin-dir <path>   Plugin repository root (contains package.json with openvcs metadata)\n  -V, --verbose         Enable verbose output\n`;
@@ -286,10 +300,11 @@ export function runCommand(program: string, args: string[], cwd: string, verbose
     process.stderr.write(`Running command in ${cwd}: ${program} ${args.join(" ")}\n`);
   }
 
-  const result = spawnSync(program, args, {
+  const spawn = normalizeSpawnCommand(program, args);
+  const result = spawnSync(spawn.program, spawn.args, {
     cwd,
-    shell: shouldUseWindowsShell(program),
     stdio: ["ignore", verbose ? "inherit" : "ignore", "inherit"],
+    windowsHide: true,
   }) as CommandResult;
 
   if (result.error) {
