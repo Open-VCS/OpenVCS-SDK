@@ -5,6 +5,8 @@
 
 OpenVCS SDK for npm-based plugin development.
 
+Requires Node.js 20 or newer.
+
 Install this package in plugin projects, scaffold a starter plugin, and build
 plugin runtime assets. The SDK also exports a Node-only JSON-RPC runtime
 layer and shared protocol/types so plugins do not have to hand-roll stdio
@@ -40,6 +42,14 @@ Run tests (builds first):
 ```bash
 npm test
 ```
+
+Generate a coverage report:
+
+```bash
+npm run test:coverage
+```
+
+This runs the full test flow and writes c8 output to `coverage/`.
 
 Run the local CLI through npm scripts:
 
