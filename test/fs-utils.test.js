@@ -128,6 +128,22 @@ test("copyDirectoryRecursiveStrict skips special non-file entries", () => {
   cleanupTempDir(root);
 });
 
+test("copyDirectoryRecursiveStrict rejects symlink entries inside trees", () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const root = makeTempDir("openvcs-sdk-test");
+  const src = path.join(root, "src");
+  const dst = path.join(root, "dst");
+  const target = path.join(root, "target.txt");
+  writeText(target, "target");
+  fs.mkdirSync(src, { recursive: true });
+  fs.symlinkSync(target, path.join(src, "linked.txt"));
+
+  assert.throws(() => copyDirectoryRecursiveStrict(src, dst), /symlink/);
+  cleanupTempDir(root);
+});
+
 test("rejectSymlinksRecursive allows regular trees", () => {
   const root = makeTempDir("openvcs-sdk-test");
   writeText(path.join(root, "a.txt"), "a");

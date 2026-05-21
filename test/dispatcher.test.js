@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { createDefaultPluginDelegates, createHost, createRuntimeDispatcher, pluginError } = require("../lib/runtime");
+const { createDefaultPluginDelegates, createHost, createRuntimeDispatcher, isPluginFailure, pluginError } = require("../lib/runtime");
 const { PROTOCOL_VERSION } = require("../lib/types");
 
 function writer() {
@@ -81,6 +81,12 @@ test("dispatcher reports plugin failures separately from generic failures", asyn
 
   assert.equal(pluginOut.messages[0].error.data.code, "bad-input");
   assert.equal(genericOut.messages[0].error.data.code, "plugin-internal-error");
+});
+
+test("isPluginFailure rejects non-objects", () => {
+  assert.equal(isPluginFailure(null), false);
+  assert.equal(isPluginFailure("bad"), false);
+  assert.equal(isPluginFailure({ code: "x", message: "y" }), false);
 });
 
 test("dispatcher times out slow handlers", async () => {

@@ -1,10 +1,29 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const readline = require("node:readline/promises");
 const test = require("node:test");
 const path = require("node:path");
 
 const { __private, initUsage, isUsageError, runInitCommand } = require("../lib/init");
 const { cleanupTempDir, makeTempDir } = require("./helpers");
+
+async function withMockReadline(answers, run) {
+  const originalCreateInterface = readline.createInterface;
+  const prompts = [];
+  readline.createInterface = () => ({
+    async question(prompt) {
+      prompts.push(prompt);
+      return answers.shift() ?? "";
+    },
+    close() {},
+  });
+
+  try {
+    return await run(prompts);
+  } finally {
+    readline.createInterface = originalCreateInterface;
+  }
+}
 
 test("validatePluginId accepts regular ids", () => {
   assert.equal(__private.validatePluginId("my.plugin"), undefined);
@@ -45,6 +64,53 @@ test("runInitCommand validates args before prompting", async () => {
     usageError = error;
   }
   assert.equal(isUsageError(usageError), true);
+});
+
+test("runInitCommand rejects when target path is a file", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const targetPath = path.join(root, "plugin");
+  fs.writeFileSync(targetPath, "not a directory", "utf8");
+
+  await assert.rejects(
+    () =>
+      withMockReadline([
+        "",
+        "module",
+        "",
+        "",
+        "",
+        "",
+        "n",
+      ], () => runInitCommand([targetPath])),
+    /target path exists but is not a directory/
+  );
+
+  cleanupTempDir(root);
+});
+
+test("runInitCommand writes a module template after confirming overwrite", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const targetDir = path.join(root, "plugin");
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.writeFileSync(path.join(targetDir, "README.md"), "keep", "utf8");
+
+  const created = await withMockReadline([
+    "",
+    "module",
+    "",
+    "",
+    "",
+    "",
+    "n",
+    "y",
+  ], () => runInitCommand([targetDir]));
+
+  assert.equal(created, targetDir);
+  assert.equal(fs.existsSync(path.join(targetDir, "package.json")), true);
+  assert.equal(fs.existsSync(path.join(targetDir, "src", "plugin.ts")), true);
+  assert.equal(fs.existsSync(path.join(targetDir, ".gitignore")), true);
+
+  cleanupTempDir(root);
 });
 
 test("collectAnswers re-prompts invalid plugin id", async () => {
