@@ -4,6 +4,8 @@ import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { spawnSync } from "node:child_process";
 
+import { npmArgsPrefix, npmExecutable } from "./npm-runner";
+
 const packageJson: { version: string } = require("../package.json");
 
 type UsageError = Error & { code?: string };
@@ -31,27 +33,6 @@ interface PromptDriver {
 
 interface InitCommandError {
   code?: string;
-}
-
-function npmExecutable(): string {
-  return process.platform === "win32" ? process.execPath : "npm";
-}
-
-function npmArgsPrefix(): string[] {
-  if (process.platform !== "win32") {
-    return [];
-  }
-
-  return [resolveNpmCli()];
-}
-
-function resolveNpmCli(): string {
-  const localNodeModules = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
-  if (fs.existsSync(localNodeModules)) {
-    return localNodeModules;
-  }
-
-  return require.resolve("npm/bin/npm-cli.js");
 }
 
 export function initUsage(commandName = "openvcs"): string {

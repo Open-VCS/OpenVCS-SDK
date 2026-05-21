@@ -6,6 +6,9 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { isPathInside } from "./fs-utils";
+import { npmArgsPrefix, npmExecutable } from "./npm-runner";
+
+export { npmExecutable } from "./npm-runner";
 
 type UsageError = Error & { code?: string };
 
@@ -33,28 +36,6 @@ interface PackageScripts {
 }
 
 const AUTHORED_PLUGIN_MODULE_BASENAME = "plugin.js";
-
-/** Returns the npm executable name for the current platform. */
-export function npmExecutable(): string {
-  return process.platform === "win32" ? process.execPath : "npm";
-}
-
-function npmArgsPrefix(): string[] {
-  if (process.platform !== "win32") {
-    return [];
-  }
-
-  return [resolveNpmCli()];
-}
-
-function resolveNpmCli(): string {
-  const localNodeModules = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
-  if (fs.existsSync(localNodeModules)) {
-    return localNodeModules;
-  }
-
-  return require.resolve("npm/bin/npm-cli.js");
-}
 
 /** Formats help text for the build command. */
 export function buildUsage(commandName = "openvcs"): string {
