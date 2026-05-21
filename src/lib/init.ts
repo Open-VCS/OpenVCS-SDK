@@ -365,6 +365,7 @@ export function isUsageError(error: unknown): error is InitCommandError {
 export const __private = {
   collectAnswers,
   createReadlinePromptDriver,
+  defaultPluginNameFromId,
   defaultPluginIdFromDir,
   sanitizeIdToken,
   validatePluginId,

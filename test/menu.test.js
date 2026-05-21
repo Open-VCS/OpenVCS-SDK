@@ -7,6 +7,8 @@ const {
   getMenu,
   hasRegisteredAction,
   hideMenu,
+  invoke,
+  notify,
   registerAction,
   removeMenu,
   resetMenuRegistry,
@@ -81,4 +83,36 @@ test("removeMenu deletes menu and order entry", async () => {
 
   assert.equal(getMenu("gone"), null);
   assert.deepEqual((await menuResult()).map((menu) => menu.id), ["stay"]);
+});
+
+test("invoke and notify use OpenVCS host helper when available", async () => {
+  const previous = globalThis.OpenVCS;
+  const calls = [];
+  globalThis.OpenVCS = {
+    async invoke(cmd, args) {
+      calls.push({ cmd, args });
+      return "ok";
+    },
+    notify(msg) {
+      calls.push({ msg });
+    },
+  };
+  try {
+    assert.equal(await invoke("repo.open", { path: "/tmp" }), "ok");
+    notify("done");
+    assert.deepEqual(calls, [{ cmd: "repo.open", args: { path: "/tmp" } }, { msg: "done" }]);
+  } finally {
+    globalThis.OpenVCS = previous;
+  }
+});
+
+test("invoke and notify fail when OpenVCS host helper is missing", async () => {
+  const previous = globalThis.OpenVCS;
+  delete globalThis.OpenVCS;
+  try {
+    await assert.rejects(() => invoke("missing"), /host is not available/);
+    assert.throws(() => notify("missing"), /host is not available/);
+  } finally {
+    globalThis.OpenVCS = previous;
+  }
 });

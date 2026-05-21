@@ -29,6 +29,8 @@ test("init helpers derive stable defaults", () => {
   assert.equal(__private.sanitizeIdToken(" My Plugin!! "), "my-plugin");
   assert.equal(__private.defaultPluginIdFromDir(path.join("tmp", "My Plugin")), "my-plugin");
   assert.equal(__private.defaultPluginIdFromDir(path.join("tmp", "!!!")), "openvcs.plugin");
+  assert.equal(__private.defaultPluginNameFromId("my-plugin.name"), "My Plugin Name");
+  assert.equal(__private.defaultPluginNameFromId("---"), "OpenVCS Plugin");
   assert.match(initUsage("sdk"), /sdk init/);
 });
 
@@ -84,6 +86,67 @@ test("collectAnswers re-prompts invalid plugin id", async () => {
   assert.equal(answers.defaultEnabled, true);
   assert.equal(answers.runNpmInstall, false);
   assert.equal(messages.some((message) => message.includes("must not contain path separators")), true);
+});
+
+test("collectAnswers handles theme mode, invalid kind, blank defaults, and boolean retries", async () => {
+  const prompts = [
+    "",
+    "bad-kind",
+    "t",
+    "",
+    "",
+    "",
+  ];
+  const booleans = [false, true];
+  const messages = [];
+  const promptDriver = {
+    async promptText(_label, defaultValue) {
+      const value = prompts.shift();
+      return value === "" ? defaultValue : value;
+    },
+    async promptBoolean() {
+      return booleans.shift();
+    },
+    close() {
+      messages.push("closed");
+    },
+  };
+  const output = { write(message) { messages.push(message); } };
+
+  const answers = await __private.collectAnswers(
+    { forceTheme: false, targetHint: "theme-dir" },
+    promptDriver,
+    output,
+  );
+
+  assert.equal(answers.kind, "theme");
+  assert.equal(answers.pluginId, "theme-dir");
+  assert.equal(answers.pluginName, "Theme Dir");
+  assert.equal(answers.pluginVersion, "0.1.0");
+  assert.equal(answers.defaultEnabled, false);
+  assert.equal(answers.runNpmInstall, true);
+  assert.equal(messages.some((message) => String(message).includes("Please choose")), true);
+  assert.equal(messages.includes("closed"), true);
+});
+
+test("collectAnswers skips kind prompt when theme is forced", async () => {
+  const prompts = ["forced-dir", "forced.theme", "Forced Theme", "1.0.0"];
+  const labels = [];
+  const promptDriver = {
+    async promptText(label) {
+      labels.push(label);
+      return prompts.shift();
+    },
+    async promptBoolean() {
+      return false;
+    },
+    close() {},
+  };
+
+  const answers = await __private.collectAnswers({ forceTheme: true }, promptDriver, { write() {} });
+
+  assert.equal(answers.kind, "theme");
+  assert.equal(labels.includes("Template type (module/theme)"), false);
 });
 
 test("writeModuleTemplate scaffolds SDK runtime entrypoint", () => {

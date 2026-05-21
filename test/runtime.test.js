@@ -575,6 +575,43 @@ test("plugin.handle_action logs unhandled actions without explicit handler", asy
   ]);
 });
 
+test("registered runtime merges explicit and generated menus", async () => {
+  resetMenuRegistry();
+  createMenu("generated", "Generated", { surface: "menubar" });
+  addMenuItem("generated", { label: "Generated Item", action: "generated-action" });
+  const harness = createRuntimeHarness({
+    plugin: {
+      async "plugin.get_menus"() {
+        return [{ id: "explicit", label: "Explicit", surface: "settings", order: 1, elements: [] }];
+      },
+    },
+  });
+
+  const messages = await harness.request({ jsonrpc: "2.0", id: 50, method: "plugin.get_menus", params: {} });
+
+  assert.deepEqual(messages[0].result.map((menu) => menu.id), ["explicit", "generated"]);
+});
+
+test("registered runtime falls back to explicit action handler when action is unregistered", async () => {
+  resetMenuRegistry();
+  const harness = createRuntimeHarness({
+    plugin: {
+      async "plugin.handle_action"(params) {
+        return `explicit:${params.action_id}`;
+      },
+    },
+  });
+
+  const messages = await harness.request({
+    jsonrpc: "2.0",
+    id: 51,
+    method: "plugin.handle_action",
+    params: { action_id: "not-registered" },
+  });
+
+  assert.deepEqual(messages, [{ jsonrpc: "2.0", id: 51, result: "explicit:not-registered" }]);
+});
+
 test("bootstrapPluginModule resets menu registry before OnPluginStart", async () => {
   resetMenuRegistry();
   // Pre-populate state that should be cleared.
