@@ -46,7 +46,7 @@
 - Keep Node tests in `test/` near the feature area they validate.
 - Name tests descriptively and cover bundle safety checks (symlinks, path traversal, native addons).
 - Before PRs, run `npm test`.
-- When you need coverage, run `npm run test:coverage`.
+- When you need coverage, run `npm run coverage`.
 
 ## Commit & PR guidelines
 - Use short, imperative commit messages (<=72 chars) such as `sdk: validate manifest fields`.

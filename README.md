@@ -46,7 +46,7 @@ npm test
 Generate a coverage report:
 
 ```bash
-npm run test:coverage
+npm run coverage
 ```
 
 This runs the full test flow and writes c8 output to `coverage/`.

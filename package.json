@@ -33,7 +33,8 @@
   "scripts": {
     "build": "node scripts/build-sdk.js",
     "test": "npm run build && npm run test:types && node --test test/*.test.js",
-    "test:coverage": "npm run build && npm run test:types && c8 --reporter=text --reporter=lcov node --test test/*.test.js",
+    "coverage": "npm run build && npm run test:types && c8 --reporter=text --reporter=lcov node --test test/*.test.js",
+    "test:coverage": "npm run coverage",
     "test:types": "node ./node_modules/typescript/bin/tsc -p test/tsconfig.json",
     "prepack": "npm run build",
     "preopenvcs": "npm run build",
