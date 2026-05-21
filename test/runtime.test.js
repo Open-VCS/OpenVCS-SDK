@@ -5,6 +5,8 @@ const test = require("node:test");
 const {
   bootstrapPluginModule,
   createRegisteredPluginRuntime,
+  createPluginRuntime,
+  startPluginRuntime,
   resetMenuRegistry,
 } = require("../lib/runtime");
 const {
@@ -184,6 +186,58 @@ test("createPluginRuntime stop is idempotent and invokes shutdown callback", asy
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(shutdowns, 1);
+});
+
+test("startPluginRuntime uses the runtime start method", () => {
+  const runtime = createPluginRuntime();
+  let started = 0;
+  const originalStart = runtime.start.bind(runtime);
+  runtime.start = (transport) => {
+    started += 1;
+    return originalStart(transport);
+  };
+
+  startPluginRuntime(runtime, {
+    stdin: new EventEmitter(),
+    stdout: { write() { return true; } },
+  });
+
+  assert.equal(started, 1);
+  runtime.stop();
+});
+
+test("runtime root exports and type constants are live bindings", () => {
+  const runtimeRoot = require("../lib/runtime");
+  const typesRoot = require("../lib/types");
+
+  assert.equal(runtimeRoot.createPluginRuntime, createPluginRuntime);
+  assert.equal(runtimeRoot.startPluginRuntime, startPluginRuntime);
+  assert.equal(typeof runtimeRoot.createDefaultPluginDelegates, "function");
+  assert.equal(typeof runtimeRoot.createRuntimeDispatcher, "function");
+  assert.equal(typeof runtimeRoot.isPluginFailure, "function");
+  assert.equal(typeof runtimeRoot.pluginError, "function");
+  assert.equal(typeof runtimeRoot.createHost, "function");
+  assert.equal(typeof runtimeRoot.ModalBuilder, "function");
+  assert.equal(typeof runtimeRoot.bootstrapPluginModule, "function");
+  assert.equal(typeof runtimeRoot.createRegisteredPluginRuntime, "function");
+  assert.equal(typeof runtimeRoot.VcsDelegateBase, "function");
+  assert.equal(typeof runtimeRoot.getMenu, "function");
+  assert.equal(typeof runtimeRoot.getOrCreateMenu, "function");
+  assert.equal(typeof runtimeRoot.createMenu, "function");
+  assert.equal(typeof runtimeRoot.addMenuItem, "function");
+  assert.equal(typeof runtimeRoot.addMenuSeparator, "function");
+  assert.equal(typeof runtimeRoot.removeMenu, "function");
+  assert.equal(typeof runtimeRoot.hideMenu, "function");
+  assert.equal(typeof runtimeRoot.showMenu, "function");
+  assert.equal(typeof runtimeRoot.registerAction, "function");
+  assert.equal(typeof runtimeRoot.resetMenuRegistry, "function");
+  assert.equal(typeof runtimeRoot.invoke, "function");
+  assert.equal(typeof runtimeRoot.notify, "function");
+
+  assert.equal(typesRoot.PROTOCOL_VERSION, 1);
+  assert.equal(typesRoot.PLUGIN_FAILURE_CODE, -32001);
+  assert.equal(typesRoot.PLUGIN_INTERNAL_ERROR_CODE, -32002);
+  assert.equal(typesRoot.PROTOCOL_VERSION_MISMATCH_CODE, -32003);
 });
 
 test("bootstrapPluginModule runs OnPluginStart before starting runtime", async () => {

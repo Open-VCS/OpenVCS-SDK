@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const readline = require("node:readline/promises");
 const test = require("node:test");
@@ -22,6 +23,17 @@ async function withMockReadline(answers, run) {
     return await run(prompts);
   } finally {
     readline.createInterface = originalCreateInterface;
+  }
+}
+
+async function withMockSpawnSync(result, run) {
+  const originalSpawnSync = childProcess.spawnSync;
+  childProcess.spawnSync = () => result;
+
+  try {
+    return await run();
+  } finally {
+    childProcess.spawnSync = originalSpawnSync;
   }
 }
 
@@ -109,6 +121,28 @@ test("runInitCommand writes a module template after confirming overwrite", async
   assert.equal(fs.existsSync(path.join(targetDir, "package.json")), true);
   assert.equal(fs.existsSync(path.join(targetDir, "src", "plugin.ts")), true);
   assert.equal(fs.existsSync(path.join(targetDir, ".gitignore")), true);
+
+  cleanupTempDir(root);
+});
+
+test("runInitCommand spawns npm install when requested", async () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const targetDir = path.join(root, "fresh-plugin");
+
+  await withMockSpawnSync({ status: 0 }, async () => {
+    const created = await withMockReadline([
+      targetDir,
+      "module",
+      "fresh.plugin",
+      "Fresh Plugin",
+      "0.1.0",
+      "y",
+      "y",
+    ], () => runInitCommand([]));
+
+    assert.equal(created, path.resolve(targetDir));
+    assert.equal(fs.existsSync(path.join(targetDir, "package.json")), true);
+  });
 
   cleanupTempDir(root);
 });
