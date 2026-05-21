@@ -49,7 +49,9 @@ Generate a coverage report:
 npm run coverage
 ```
 
-This runs the full test flow and writes c8 output to `coverage/`.
+This runs the full test flow, writes c8 output to `coverage/`, and fails if
+coverage drops below 95% lines, 95% functions, 85% branches, or 95%
+statements.
 
 Run the local CLI through npm scripts:
 
