@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const test = require("node:test");
 const path = require("node:path");
 
-const { __private } = require("../lib/init");
+const { __private, initUsage, isUsageError, runInitCommand } = require("../lib/init");
 const { cleanupTempDir, makeTempDir } = require("./helpers");
 
 test("validatePluginId accepts regular ids", () => {
@@ -23,6 +23,26 @@ test("validatePluginId rejects dot segments", () => {
 test("validatePluginId rejects path separators", () => {
   assert.match(__private.validatePluginId("bad/id"), /path separators/);
   assert.match(__private.validatePluginId("bad\\id"), /path separators/);
+});
+
+test("init helpers derive stable defaults", () => {
+  assert.equal(__private.sanitizeIdToken(" My Plugin!! "), "my-plugin");
+  assert.equal(__private.defaultPluginIdFromDir(path.join("tmp", "My Plugin")), "my-plugin");
+  assert.equal(__private.defaultPluginIdFromDir(path.join("tmp", "!!!")), "openvcs.plugin");
+  assert.match(initUsage("sdk"), /sdk init/);
+});
+
+test("runInitCommand validates args before prompting", async () => {
+  await assert.rejects(() => runInitCommand(["--bad"]), /unknown argument for init/);
+  await assert.rejects(() => runInitCommand(["one", "two"]), /at most one target directory/);
+
+  let usageError;
+  try {
+    await runInitCommand(["--help"]);
+  } catch (error) {
+    usageError = error;
+  }
+  assert.equal(isUsageError(usageError), true);
 });
 
 test("collectAnswers re-prompts invalid plugin id", async () => {
@@ -89,6 +109,31 @@ test("writeModuleTemplate scaffolds SDK runtime entrypoint", () => {
   assert.match(pluginSource, /OnPluginStart/);
   assert.match(pluginSource, /PluginDefinition/);
   assert.match(pluginSource, /context\.host\.info\('OpenVCS plugin started'\)/);
+
+  cleanupTempDir(root);
+});
+
+test("writeThemeTemplate scaffolds theme package without module runtime", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const targetDir = path.join(root, "theme-plugin");
+
+  __private.writeThemeTemplate({
+    targetDir,
+    kind: "theme",
+    pluginId: "example.theme",
+    pluginName: "Example Theme",
+    pluginVersion: "0.3.0",
+    defaultEnabled: false,
+    runNpmInstall: false,
+  });
+
+  const packageJson = JSON.parse(fs.readFileSync(path.join(targetDir, "package.json"), "utf8"));
+  const themeJson = JSON.parse(fs.readFileSync(path.join(targetDir, "themes", "default", "theme.json"), "utf8"));
+
+  assert.equal(packageJson.openvcs.module, undefined);
+  assert.equal(packageJson.openvcs.default_enabled, false);
+  assert.equal(themeJson.name, "Example Theme");
+  assert.equal(themeJson.tokens.accent, "#2a7fff");
 
   cleanupTempDir(root);
 });

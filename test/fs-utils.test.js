@@ -55,6 +55,20 @@ test("copyFileStrict rejects non-files", () => {
   cleanupTempDir(root);
 });
 
+test("copyFileStrict rejects file symlinks", () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const root = makeTempDir("openvcs-sdk-test");
+  const target = path.join(root, "target.txt");
+  const link = path.join(root, "link.txt");
+  writeText(target, "target");
+  fs.symlinkSync(target, link);
+
+  assert.throws(() => copyFileStrict(link, path.join(root, "out.txt")), /symlink/);
+  cleanupTempDir(root);
+});
+
 test("copyDirectoryRecursiveStrict copies nested trees", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const src = path.join(root, "src");
@@ -84,6 +98,33 @@ test("copyDirectoryRecursiveStrict errors when source is file", () => {
   writeText(src, "x");
   const dst = path.join(root, "dst");
   assert.throws(() => copyDirectoryRecursiveStrict(src, dst), /expected directory/);
+  cleanupTempDir(root);
+});
+
+test("copyDirectoryRecursiveStrict rejects source directory symlink", () => {
+  if (process.platform === "win32") {
+    return;
+  }
+  const root = makeTempDir("openvcs-sdk-test");
+  const targetDir = path.join(root, "target");
+  const link = path.join(root, "link");
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.symlinkSync(targetDir, link);
+
+  assert.throws(() => copyDirectoryRecursiveStrict(link, path.join(root, "dst")), /symlink/);
+  cleanupTempDir(root);
+});
+
+test("copyDirectoryRecursiveStrict skips special non-file entries", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const src = path.join(root, "src");
+  const dst = path.join(root, "dst");
+  fs.mkdirSync(path.join(src, "fifo-like"), { recursive: true });
+  writeText(path.join(src, "file.txt"), "ok");
+
+  copyDirectoryRecursiveStrict(src, dst);
+
+  assert.equal(fs.readFileSync(path.join(dst, "file.txt"), "utf8"), "ok");
   cleanupTempDir(root);
 });
 

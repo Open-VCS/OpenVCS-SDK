@@ -369,4 +369,5 @@ export const __private = {
   sanitizeIdToken,
   validatePluginId,
   writeModuleTemplate,
+  writeThemeTemplate,
 };

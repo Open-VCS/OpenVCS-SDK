@@ -31,3 +31,49 @@ test("resolveNpmCli falls back to require.resolve when local npm cli is unavaila
 
   assert.equal(resolved, "resolved:npm/bin/npm-cli.js");
 });
+
+test("resolveNpmCli prefers npm cli beside node.exe before require.resolve", () => {
+  const execPath = "C:\\Tools With Spaces\\nodejs\\node.exe";
+  const localCli = path.join(path.dirname(execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  let fallbackCalled = false;
+
+  const resolved = resolveNpmCli(
+    execPath,
+    (candidate) => candidate === localCli,
+    () => {
+      fallbackCalled = true;
+      return "fallback";
+    },
+  );
+
+  assert.equal(resolved, localCli);
+  assert.equal(fallbackCalled, false);
+});
+
+test("npmCommand keeps Windows paths unquoted because spawn receives argv array", () => {
+  const execPath = "C:\\Program Files\\nodejs\\node.exe";
+  const cliPath = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
+  const command = npmCommand("win32", execPath, () => false, () => cliPath);
+
+  assert.equal(command.program, execPath);
+  assert.equal(command.argsPrefix[0], cliPath);
+  assert.equal(command.program.startsWith('"'), false);
+  assert.equal(command.argsPrefix[0].startsWith('"'), false);
+});
+
+test("npmCommand returns a fresh argsPrefix array per Windows call", () => {
+  const execPath = "C:\\nodejs\\node.exe";
+  const cliPath = "C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
+  const first = npmCommand("win32", execPath, () => false, () => cliPath);
+  const second = npmCommand("win32", execPath, () => false, () => cliPath);
+
+  first.argsPrefix.push("mutated");
+
+  assert.deepEqual(second.argsPrefix, [cliPath]);
+});
+
+test("SDK build module no longer exposes shell-wrapper helper", () => {
+  const buildModule = require("../lib/build");
+
+  assert.equal(Object.hasOwn(buildModule, "shouldUseWindowsShell"), false);
+});

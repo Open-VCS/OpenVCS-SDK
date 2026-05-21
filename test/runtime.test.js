@@ -134,6 +134,58 @@ test("createPluginRuntime reports missing methods as plugin failures", async () 
   ]);
 });
 
+test("createPluginRuntime ignores chunks before start and duplicate starts", async () => {
+  const stdin = new EventEmitter();
+  const chunks = [];
+  const stdout = {
+    write(chunk) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      return true;
+    },
+  };
+  const runtime = createRegisteredPluginRuntime({});
+
+  runtime.consumeChunk(serializeFramedMessage({ jsonrpc: "2.0", id: 40, method: "plugin.initialize", params: {} }));
+  runtime.start({ stdin, stdout });
+  runtime.start({ stdin, stdout });
+  stdin.emit("data", serializeFramedMessage({ jsonrpc: "2.0", id: 41, method: "plugin.initialize", params: {} }));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const parsed = parseFramedMessages(Buffer.concat(chunks));
+  assert.deepEqual(parsed.messages.map((message) => message.id), [41]);
+});
+
+test("createPluginRuntime logs invalid requests instead of responding", async () => {
+  const harness = createRuntimeHarness({});
+
+  const messages = await harness.request({ jsonrpc: "2.0", id: null, method: "   ", params: [] });
+
+  assert.deepEqual(messages, [{
+    jsonrpc: "2.0",
+    method: "host.log",
+    params: {
+      level: "error",
+      target: "openvcs.plugin",
+      message: "invalid request: missing method, invalid id type: object",
+    },
+  }]);
+});
+
+test("createPluginRuntime stop is idempotent and invokes shutdown callback", async () => {
+  const stdin = new EventEmitter();
+  const stdout = { write() { return true; } };
+  let shutdowns = 0;
+  const runtime = createRegisteredPluginRuntime({ onShutdown() { shutdowns += 1; } });
+
+  runtime.stop();
+  runtime.start({ stdin, stdout });
+  runtime.stop();
+  runtime.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(shutdowns, 1);
+});
+
 test("bootstrapPluginModule runs OnPluginStart before starting runtime", async () => {
   const stdin = new EventEmitter();
   const chunks = [];
