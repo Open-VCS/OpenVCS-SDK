@@ -11,8 +11,13 @@ test("npmCommand uses npm directly on non-Windows platforms", () => {
 });
 
 test("npmExecutable and npmArgsPrefix expose the default npm command", () => {
-  assert.equal(npmExecutable(), "npm");
-  assert.deepEqual(npmArgsPrefix(), []);
+  if (process.platform === "win32") {
+    assert.equal(npmExecutable(), process.execPath);
+    assert.ok(npmArgsPrefix().length > 0);
+  } else {
+    assert.equal(npmExecutable(), "npm");
+    assert.deepEqual(npmArgsPrefix(), []);
+  }
 });
 
 test("npmCommand runs npm through node.exe on Windows without cmd.exe", () => {
