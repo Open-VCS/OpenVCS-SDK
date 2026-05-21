@@ -36,31 +36,24 @@ const AUTHORED_PLUGIN_MODULE_BASENAME = "plugin.js";
 
 /** Returns the npm executable name for the current platform. */
 export function npmExecutable(): string {
-  return "npm";
+  return process.platform === "win32" ? process.execPath : "npm";
 }
 
-/** Returns whether a command must be launched via the Windows shell. */
-export function shouldUseWindowsShell(program: string): boolean {
+function npmArgsPrefix(): string[] {
   if (process.platform !== "win32") {
-    return false;
+    return [];
   }
 
-  const normalized = program.toLowerCase();
-  return normalized === "npm" || normalized.endsWith(".cmd") || normalized.endsWith(".bat");
+  return [resolveNpmCli()];
 }
 
-function quoteCmdArg(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
-}
-
-function normalizeSpawnCommand(program: string, args: string[]): { program: string; args: string[] } {
-  if (!shouldUseWindowsShell(program)) {
-    return { program, args };
+function resolveNpmCli(): string {
+  const localNodeModules = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  if (fs.existsSync(localNodeModules)) {
+    return localNodeModules;
   }
 
-  const shell = process.env.ComSpec || "cmd.exe";
-  const commandLine = [program, ...args].map(quoteCmdArg).join(" ");
-  return { program: shell, args: ["/d", "/s", "/c", commandLine] };
+  return require.resolve("npm/bin/npm-cli.js");
 }
 
 /** Formats help text for the build command. */
@@ -300,8 +293,7 @@ export function runCommand(program: string, args: string[], cwd: string, verbose
     process.stderr.write(`Running command in ${cwd}: ${program} ${args.join(" ")}\n`);
   }
 
-  const spawn = normalizeSpawnCommand(program, args);
-  const result = spawnSync(spawn.program, spawn.args, {
+  const result = spawnSync(program, args, {
     cwd,
     stdio: ["ignore", verbose ? "inherit" : "ignore", "inherit"],
     windowsHide: true,
@@ -357,7 +349,7 @@ export function buildPluginAssets(parsedArgs: BuildArgs): ManifestInfo {
     );
   }
 
-  runCommand(npmExecutable(), ["run", "build:plugin"], parsedArgs.pluginDir, parsedArgs.verbose);
+  runCommand(npmExecutable(), [...npmArgsPrefix(), "run", "build:plugin"], parsedArgs.pluginDir, parsedArgs.verbose);
   generateModuleBootstrap(parsedArgs.pluginDir, manifest.moduleExec);
   validateDeclaredModuleExec(parsedArgs.pluginDir, manifest.moduleExec);
   return manifest;

@@ -34,30 +34,24 @@ interface InitCommandError {
 }
 
 function npmExecutable(): string {
-  return "npm";
+  return process.platform === "win32" ? process.execPath : "npm";
 }
 
-function shouldUseWindowsShell(program: string): boolean {
+function npmArgsPrefix(): string[] {
   if (process.platform !== "win32") {
-    return false;
+    return [];
   }
 
-  const normalized = program.toLowerCase();
-  return normalized === "npm" || normalized.endsWith(".cmd") || normalized.endsWith(".bat");
+  return [resolveNpmCli()];
 }
 
-function quoteCmdArg(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
-}
-
-function normalizeSpawnCommand(program: string, args: string[]): { program: string; args: string[] } {
-  if (!shouldUseWindowsShell(program)) {
-    return { program, args };
+function resolveNpmCli(): string {
+  const localNodeModules = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  if (fs.existsSync(localNodeModules)) {
+    return localNodeModules;
   }
 
-  const shell = process.env.ComSpec || "cmd.exe";
-  const commandLine = [program, ...args].map(quoteCmdArg).join(" ");
-  return { program: shell, args: ["/d", "/s", "/c", commandLine] };
+  return require.resolve("npm/bin/npm-cli.js");
 }
 
 export function initUsage(commandName = "openvcs"): string {
@@ -228,8 +222,7 @@ async function collectAnswers(
 }
 
 function runNpmInstall(targetDir: string): void {
-  const spawn = normalizeSpawnCommand(npmExecutable(), ["install"]);
-  const result = spawnSync(spawn.program, spawn.args, {
+  const result = spawnSync(npmExecutable(), [...npmArgsPrefix(), "install"], {
     cwd: targetDir,
     stdio: "inherit",
     windowsHide: true,
