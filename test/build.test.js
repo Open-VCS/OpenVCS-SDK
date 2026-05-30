@@ -4,9 +4,13 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  authoredPluginModulePath,
   buildPluginAssets,
+  generateModuleBootstrap,
+  hasPackageJson,
   parseBuildArgs,
   readManifest,
+  runCommand,
   validateDeclaredModuleExec,
   validateGeneratedBootstrapTargets,
 } = require("../lib/build");
@@ -46,6 +50,10 @@ test("parseBuildArgs parses known flags", () => {
 
 test("parseBuildArgs help returns usage error", () => {
   assert.throws(() => parseBuildArgs(["--help"]), /openvcs build \[args\]/);
+});
+
+test("parseBuildArgs rejects unknown flags", () => {
+  assert.throws(() => parseBuildArgs(["--wat"]), /unknown flag: --wat/);
 });
 
 test("buildPluginAssets no-ops for theme-only plugins", () => {
@@ -136,6 +144,73 @@ test("readManifest and validateDeclaredModuleExec stay reusable", () => {
   cleanupTempDir(root);
 });
 
+test("readManifest reports missing and invalid package manifests", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const missingDir = path.join(root, "missing");
+  fs.mkdirSync(missingDir, { recursive: true });
+  assert.throws(() => readManifest(missingDir), /missing package\.json/);
+
+  const invalidDir = path.join(root, "invalid");
+  writeText(path.join(invalidDir, "package.json"), "{");
+  assert.throws(() => readManifest(invalidDir), /parse .*package\.json/);
+
+  const noOpenVcs = path.join(root, "no-openvcs");
+  writeJson(path.join(noOpenVcs, "package.json"), { name: "x" });
+  assert.throws(() => readManifest(noOpenVcs), /missing an 'openvcs' object/);
+
+  const badId = path.join(root, "bad-id");
+  writeJson(path.join(badId, "package.json"), { openvcs: { id: "bad/id" } });
+  assert.throws(() => readManifest(badId), /must not contain path separators/);
+
+  const missingId = path.join(root, "missing-id");
+  writeJson(path.join(missingId, "package.json"), { openvcs: {} });
+  assert.throws(() => readManifest(missingId), /missing openvcs\.id/);
+
+  cleanupTempDir(root);
+});
+
+test("validateDeclaredModuleExec rejects invalid module paths", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  fs.mkdirSync(path.join(pluginDir, "bin"), { recursive: true });
+
+  assert.doesNotThrow(() => validateDeclaredModuleExec(pluginDir, undefined));
+  assert.throws(() => validateDeclaredModuleExec(pluginDir, "native.node"), /must end with/);
+  assert.throws(() => validateDeclaredModuleExec(pluginDir, path.join(pluginDir, "bin", "x.js")), /must be a relative path/);
+  assert.throws(() => validateDeclaredModuleExec(pluginDir, "../escape.js"), /must point to a file under bin/);
+  assert.throws(() => validateDeclaredModuleExec(pluginDir, "missing.js"), /module entrypoint not found/);
+
+  cleanupTempDir(root);
+});
+
+test("renderGeneratedBootstrap rejects unsafe import paths", () => {
+  assert.throws(() => require("../lib/build").renderGeneratedBootstrap("./bad path.js", true), /unsafe module import path/);
+});
+
+test("build helpers handle no-op and package existence paths", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  fs.mkdirSync(pluginDir, { recursive: true });
+
+  assert.equal(hasPackageJson(pluginDir), false);
+  writeJson(path.join(pluginDir, "package.json"), { openvcs: { id: "x" } });
+  assert.equal(hasPackageJson(pluginDir), true);
+  assert.equal(authoredPluginModulePath(pluginDir), path.join(pluginDir, "bin", "plugin.js"));
+  assert.doesNotThrow(() => generateModuleBootstrap(pluginDir, undefined));
+
+  cleanupTempDir(root);
+});
+
+test("runCommand reports spawn failures and non-zero exits", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+
+  assert.doesNotThrow(() => runCommand(process.execPath, ["-e", "process.exit(0)"], root, true));
+  assert.throws(() => runCommand(process.execPath, ["-e", "process.exit(7)"], root, false), /exit code 7/);
+  assert.throws(() => runCommand(path.join(root, "missing-binary"), [], root, false), /failed to spawn/);
+
+  cleanupTempDir(root);
+});
+
 test("validateGeneratedBootstrapTargets rejects module.exec collisions", () => {
   const root = makeTempDir("openvcs-sdk-test");
   const pluginDir = path.join(root, "plugin");
@@ -165,6 +240,30 @@ test("validateGeneratedBootstrapTargets rejects case-insensitive collisions", ()
     /must not be plugin\.js/
   );
 
+  cleanupTempDir(root);
+});
+
+test("validateGeneratedBootstrapTargets no-ops without module exec and rejects missing compiled module", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  fs.mkdirSync(path.join(pluginDir, "bin"), { recursive: true });
+
+  assert.doesNotThrow(() => validateGeneratedBootstrapTargets(pluginDir, undefined));
+  assert.throws(() => validateGeneratedBootstrapTargets(pluginDir, "openvcs-plugin.js"), /compiled plugin module not found/);
+
+  cleanupTempDir(root);
+});
+
+test("generateModuleBootstrap tolerates invalid package json and uses extension for ESM", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+  writeText(path.join(pluginDir, "package.json"), "{");
+  writeText(path.join(pluginDir, "bin", "plugin.js"), "export {};\n");
+  writeText(path.join(pluginDir, "bin", "bootstrap.mjs"), "");
+
+  generateModuleBootstrap(pluginDir, "bootstrap.mjs");
+
+  assert.match(fs.readFileSync(path.join(pluginDir, "bin", "bootstrap.mjs"), "utf8"), /^import/m);
   cleanupTempDir(root);
 });
 

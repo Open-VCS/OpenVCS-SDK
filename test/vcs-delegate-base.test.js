@@ -167,3 +167,24 @@ test('VcsDelegateBase accepts an empty deps object without errors', () => {
   const delegates = new SharedBranchDelegates({}).toDelegates();
   assert.deepEqual(Object.keys(delegates), ['vcs.get_current_branch']);
 });
+
+test('VcsDelegateBase base implementation excludes all stubs from delegate map', () => {
+  class EmptyDelegates extends VcsDelegateBase {}
+
+  assert.deepEqual(new EmptyDelegates({}).toDelegates(), {});
+});
+
+test('all VcsDelegateBase stubs throw method-specific errors', () => {
+  class EmptyDelegates extends VcsDelegateBase {}
+  const delegate = new EmptyDelegates({});
+  const stubNames = Object.getOwnPropertyNames(VcsDelegateBase.prototype)
+    .filter((name) => !['constructor', 'toDelegates', 'assignDelegate', 'unimplemented'].includes(name));
+
+  assert.ok(stubNames.length > 30);
+  for (const name of stubNames) {
+    assert.throws(
+      () => delegate[name]({}, {}),
+      new RegExp(`VCS delegate method '${name}' must be overridden before registration`),
+    );
+  }
+});

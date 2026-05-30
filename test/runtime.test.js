@@ -5,6 +5,8 @@ const test = require("node:test");
 const {
   bootstrapPluginModule,
   createRegisteredPluginRuntime,
+  createPluginRuntime,
+  startPluginRuntime,
   resetMenuRegistry,
 } = require("../lib/runtime");
 const {
@@ -132,6 +134,110 @@ test("createPluginRuntime reports missing methods as plugin failures", async () 
       },
     },
   ]);
+});
+
+test("createPluginRuntime ignores chunks before start and duplicate starts", async () => {
+  const stdin = new EventEmitter();
+  const chunks = [];
+  const stdout = {
+    write(chunk) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      return true;
+    },
+  };
+  const runtime = createRegisteredPluginRuntime({});
+
+  runtime.consumeChunk(serializeFramedMessage({ jsonrpc: "2.0", id: 40, method: "plugin.initialize", params: {} }));
+  runtime.start({ stdin, stdout });
+  runtime.start({ stdin, stdout });
+  stdin.emit("data", serializeFramedMessage({ jsonrpc: "2.0", id: 41, method: "plugin.initialize", params: {} }));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const parsed = parseFramedMessages(Buffer.concat(chunks));
+  assert.deepEqual(parsed.messages.map((message) => message.id), [41]);
+});
+
+test("createPluginRuntime logs invalid requests instead of responding", async () => {
+  const harness = createRuntimeHarness({});
+
+  const messages = await harness.request({ jsonrpc: "2.0", id: null, method: "   ", params: [] });
+
+  assert.deepEqual(messages, [{
+    jsonrpc: "2.0",
+    method: "host.log",
+    params: {
+      level: "error",
+      target: "openvcs.plugin",
+      message: "invalid request: missing method, invalid id type: object",
+    },
+  }]);
+});
+
+test("createPluginRuntime stop is idempotent and invokes shutdown callback", async () => {
+  const stdin = new EventEmitter();
+  const stdout = { write() { return true; } };
+  let shutdowns = 0;
+  const runtime = createRegisteredPluginRuntime({ onShutdown() { shutdowns += 1; } });
+
+  runtime.stop();
+  runtime.start({ stdin, stdout });
+  runtime.stop();
+  runtime.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(shutdowns, 1);
+});
+
+test("startPluginRuntime uses the runtime start method", () => {
+  const runtime = createPluginRuntime();
+  let started = 0;
+  const originalStart = runtime.start.bind(runtime);
+  runtime.start = (transport) => {
+    started += 1;
+    return originalStart(transport);
+  };
+
+  startPluginRuntime(runtime, {
+    stdin: new EventEmitter(),
+    stdout: { write() { return true; } },
+  });
+
+  assert.equal(started, 1);
+  runtime.stop();
+});
+
+test("runtime root exports and type constants are live bindings", () => {
+  const runtimeRoot = require("../lib/runtime");
+  const typesRoot = require("../lib/types");
+
+  assert.equal(runtimeRoot.createPluginRuntime, createPluginRuntime);
+  assert.equal(runtimeRoot.startPluginRuntime, startPluginRuntime);
+  assert.equal(typeof runtimeRoot.createDefaultPluginDelegates, "function");
+  assert.equal(typeof runtimeRoot.createRuntimeDispatcher, "function");
+  assert.equal(typeof runtimeRoot.isPluginFailure, "function");
+  assert.equal(typeof runtimeRoot.pluginError, "function");
+  assert.equal(typeof runtimeRoot.createHost, "function");
+  assert.equal(typeof runtimeRoot.ModalBuilder, "function");
+  assert.equal(typeof runtimeRoot.bootstrapPluginModule, "function");
+  assert.equal(typeof runtimeRoot.createRegisteredPluginRuntime, "function");
+  assert.equal(typeof runtimeRoot.VcsDelegateBase, "function");
+  assert.equal(typeof runtimeRoot.getMenu, "function");
+  assert.equal(typeof runtimeRoot.getOrCreateMenu, "function");
+  assert.equal(typeof runtimeRoot.createMenu, "function");
+  assert.equal(typeof runtimeRoot.addMenuItem, "function");
+  assert.equal(typeof runtimeRoot.addMenuSeparator, "function");
+  assert.equal(typeof runtimeRoot.removeMenu, "function");
+  assert.equal(typeof runtimeRoot.hideMenu, "function");
+  assert.equal(typeof runtimeRoot.showMenu, "function");
+  assert.equal(typeof runtimeRoot.registerAction, "function");
+  assert.equal(typeof runtimeRoot.resetMenuRegistry, "function");
+  assert.equal(typeof runtimeRoot.invoke, "function");
+  assert.equal(typeof runtimeRoot.notify, "function");
+
+  assert.equal(typesRoot.PROTOCOL_VERSION, 1);
+  assert.equal(typesRoot.PLUGIN_FAILURE_CODE, -32001);
+  assert.equal(typesRoot.PLUGIN_INTERNAL_ERROR_CODE, -32002);
+  assert.equal(typesRoot.PROTOCOL_VERSION_MISMATCH_CODE, -32003);
 });
 
 test("bootstrapPluginModule runs OnPluginStart before starting runtime", async () => {
@@ -521,6 +627,43 @@ test("plugin.handle_action logs unhandled actions without explicit handler", asy
     },
     { jsonrpc: "2.0", id: 13, result: null },
   ]);
+});
+
+test("registered runtime merges explicit and generated menus", async () => {
+  resetMenuRegistry();
+  createMenu("generated", "Generated", { surface: "menubar" });
+  addMenuItem("generated", { label: "Generated Item", action: "generated-action" });
+  const harness = createRuntimeHarness({
+    plugin: {
+      async "plugin.get_menus"() {
+        return [{ id: "explicit", label: "Explicit", surface: "settings", order: 1, elements: [] }];
+      },
+    },
+  });
+
+  const messages = await harness.request({ jsonrpc: "2.0", id: 50, method: "plugin.get_menus", params: {} });
+
+  assert.deepEqual(messages[0].result.map((menu) => menu.id), ["explicit", "generated"]);
+});
+
+test("registered runtime falls back to explicit action handler when action is unregistered", async () => {
+  resetMenuRegistry();
+  const harness = createRuntimeHarness({
+    plugin: {
+      async "plugin.handle_action"(params) {
+        return `explicit:${params.action_id}`;
+      },
+    },
+  });
+
+  const messages = await harness.request({
+    jsonrpc: "2.0",
+    id: 51,
+    method: "plugin.handle_action",
+    params: { action_id: "not-registered" },
+  });
+
+  assert.deepEqual(messages, [{ jsonrpc: "2.0", id: 51, result: "explicit:not-registered" }]);
 });
 
 test("bootstrapPluginModule resets menu registry before OnPluginStart", async () => {

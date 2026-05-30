@@ -6,6 +6,9 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { isPathInside } from "./fs-utils";
+import { npmArgsPrefix, npmExecutable } from "./npm-runner";
+
+export { npmExecutable } from "./npm-runner";
 
 type UsageError = Error & { code?: string };
 
@@ -33,21 +36,6 @@ interface PackageScripts {
 }
 
 const AUTHORED_PLUGIN_MODULE_BASENAME = "plugin.js";
-
-/** Returns the npm executable name for the current platform. */
-export function npmExecutable(): string {
-  return "npm";
-}
-
-/** Returns whether a command must be launched via the Windows shell. */
-export function shouldUseWindowsShell(program: string): boolean {
-  if (process.platform !== "win32") {
-    return false;
-  }
-
-  const normalized = program.toLowerCase();
-  return normalized === "npm" || normalized.endsWith(".cmd") || normalized.endsWith(".bat");
-}
 
 /** Formats help text for the build command. */
 export function buildUsage(commandName = "openvcs"): string {
@@ -288,8 +276,8 @@ export function runCommand(program: string, args: string[], cwd: string, verbose
 
   const result = spawnSync(program, args, {
     cwd,
-    shell: shouldUseWindowsShell(program),
     stdio: ["ignore", verbose ? "inherit" : "ignore", "inherit"],
+    windowsHide: true,
   }) as CommandResult;
 
   if (result.error) {
@@ -342,7 +330,7 @@ export function buildPluginAssets(parsedArgs: BuildArgs): ManifestInfo {
     );
   }
 
-  runCommand(npmExecutable(), ["run", "build:plugin"], parsedArgs.pluginDir, parsedArgs.verbose);
+  runCommand(npmExecutable(), [...npmArgsPrefix(), "run", "build:plugin"], parsedArgs.pluginDir, parsedArgs.verbose);
   generateModuleBootstrap(parsedArgs.pluginDir, manifest.moduleExec);
   validateDeclaredModuleExec(parsedArgs.pluginDir, manifest.moduleExec);
   return manifest;

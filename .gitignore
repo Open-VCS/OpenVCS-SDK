@@ -11,3 +11,5 @@ node_modules/
 /lib/**/*.d.ts
 /.logs
 /.opencode
+/coverage
+/.omo
