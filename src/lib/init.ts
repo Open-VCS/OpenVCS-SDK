@@ -230,7 +230,6 @@ function writeModuleTemplate(answers: InitAnswers): void {
     openvcs: {
       id: answers.pluginId,
       name: answers.pluginName,
-      version: answers.pluginVersion,
       default_enabled: answers.defaultEnabled,
       module: { exec: "openvcs-plugin.js" },
     },
@@ -275,7 +274,6 @@ function writeThemeTemplate(answers: InitAnswers): void {
     openvcs: {
       id: answers.pluginId,
       name: answers.pluginName,
-      version: answers.pluginVersion,
       default_enabled: answers.defaultEnabled,
     },
     scripts: {
