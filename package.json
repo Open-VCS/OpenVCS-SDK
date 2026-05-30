@@ -1,6 +1,6 @@
 {
   "name": "@openvcs/sdk",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "OpenVCS SDK CLI for plugin scaffolding and runtime asset builds",
   "license": "GPL-3.0-or-later",
   "homepage": "https://openvcs.app/",
@@ -12,7 +12,7 @@
     "url": "https://github.com/Open-VCS/OpenVCS-SDK/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "bin": {
     "openvcs": "bin/openvcs.js"
@@ -32,7 +32,9 @@
   },
   "scripts": {
     "build": "node scripts/build-sdk.js",
-    "test": "npm run build && npm run test:types && node --test test/*.test.js",
+    "test": "npm run build && npm run test:types && node scripts/run-tests.js",
+    "coverage": "npm run build && npm run test:types && c8 --check-coverage --lines 95 --functions 95 --branches 85 --statements 95 --reporter=text --reporter=lcov node scripts/run-tests.js",
+    "test:coverage": "npm run coverage",
     "test:types": "node ./node_modules/typescript/bin/tsc -p test/tsconfig.json",
     "prepack": "npm run build",
     "preopenvcs": "npm run build",
@@ -40,6 +42,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.3",
+    "c8": "^11.0.0",
     "typescript": "^6.0.3"
   },
   "files": [

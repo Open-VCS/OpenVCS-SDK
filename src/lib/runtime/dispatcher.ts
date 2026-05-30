@@ -133,22 +133,30 @@ export function createRuntimeDispatcher(
 
       let result: unknown;
       if (timeout && timeout > 0) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<never>((_resolve, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(pluginError('request-timeout', `method '${method}' timed out after ${timeout}ms`));
+          }, timeout);
+        });
         try {
-          result = await handler(params, {
-            host,
-            requestId: id,
-            method,
-          });
+          result = await Promise.race([
+            handler(params, {
+              host,
+              requestId: id,
+              method,
+            }),
+            timeoutPromise,
+          ]);
         } catch (error) {
-          clearTimeout(timeoutId);
-          if ((error as Error).name === 'AbortError') {
-            throw pluginError('request-timeout', `method '${method}' timed out after ${timeout}ms`);
+          if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
           }
           throw error;
         }
-        clearTimeout(timeoutId);
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
       } else {
         result = await handler(params, {
           host,

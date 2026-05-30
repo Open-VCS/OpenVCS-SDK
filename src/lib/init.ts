@@ -4,6 +4,8 @@ import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { spawnSync } from "node:child_process";
 
+import { npmArgsPrefix, npmExecutable } from "./npm-runner";
+
 const packageJson: { version: string } = require("../package.json");
 
 type UsageError = Error & { code?: string };
@@ -31,19 +33,6 @@ interface PromptDriver {
 
 interface InitCommandError {
   code?: string;
-}
-
-function npmExecutable(): string {
-  return "npm";
-}
-
-function shouldUseWindowsShell(program: string): boolean {
-  if (process.platform !== "win32") {
-    return false;
-  }
-
-  const normalized = program.toLowerCase();
-  return normalized === "npm" || normalized.endsWith(".cmd") || normalized.endsWith(".bat");
 }
 
 export function initUsage(commandName = "openvcs"): string {
@@ -214,10 +203,10 @@ async function collectAnswers(
 }
 
 function runNpmInstall(targetDir: string): void {
-  const result = spawnSync(npmExecutable(), ["install"], {
+  const result = spawnSync(npmExecutable(), [...npmArgsPrefix(), "install"], {
     cwd: targetDir,
-    shell: shouldUseWindowsShell(npmExecutable()),
     stdio: "inherit",
+    windowsHide: true,
   });
   if (result.error) {
     throw new Error(`failed to spawn npm install in ${targetDir}: ${result.error.message}`);
@@ -241,7 +230,6 @@ function writeModuleTemplate(answers: InitAnswers): void {
     openvcs: {
       id: answers.pluginId,
       name: answers.pluginName,
-      version: answers.pluginVersion,
       default_enabled: answers.defaultEnabled,
       module: { exec: "openvcs-plugin.js" },
     },
@@ -286,7 +274,6 @@ function writeThemeTemplate(answers: InitAnswers): void {
     openvcs: {
       id: answers.pluginId,
       name: answers.pluginName,
-      version: answers.pluginVersion,
       default_enabled: answers.defaultEnabled,
     },
     scripts: {
@@ -376,8 +363,10 @@ export function isUsageError(error: unknown): error is InitCommandError {
 export const __private = {
   collectAnswers,
   createReadlinePromptDriver,
+  defaultPluginNameFromId,
   defaultPluginIdFromDir,
   sanitizeIdToken,
   validatePluginId,
   writeModuleTemplate,
+  writeThemeTemplate,
 };

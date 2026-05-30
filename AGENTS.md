@@ -29,7 +29,7 @@
 - CI release channels publish npm prereleases on `Beta` (`beta`), `Dev` push commits (`edge`), and scheduled `Dev` nightlies (`nightly`).
 
 ## Coding style & conventions
-- Author code in TypeScript (`src/**/*.ts`) targeting Node 18+.
+- Author code in TypeScript (`src/**/*.ts`) targeting Node 20+.
 - Compiled outputs in `bin/` and `lib/` are generated artifacts; do not edit them manually.
 - Prefer small, focused modules in `src/lib/` and keep files under 1000 lines.
 - Use clear error messages that include the relevant path/flag/context.
@@ -46,6 +46,7 @@
 - Keep Node tests in `test/` near the feature area they validate.
 - Name tests descriptively and cover bundle safety checks (symlinks, path traversal, native addons).
 - Before PRs, run `npm test`.
+- When you need coverage, run `npm run coverage`.
 
 ## Commit & PR guidelines
 - Use short, imperative commit messages (<=72 chars) such as `sdk: validate manifest fields`.
