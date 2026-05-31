@@ -26,6 +26,10 @@ export interface ManifestInfo {
   manifestPath: string;
 }
 
+function writeBuildProgress(message: string): void {
+  process.stderr.write(`openvcs build: ${message}\n`);
+}
+
 interface CommandResult {
   status: number | null;
   error?: Error;
@@ -76,11 +80,14 @@ export function parseBuildArgs(args: string[]): BuildArgs {
 }
 
 /** Reads and validates the plugin manifest. */
-export function readManifest(pluginDir: string): ManifestInfo {
+export function readManifest(pluginDir: string, verbose = false): ManifestInfo {
   const manifestPath = path.join(pluginDir, "package.json");
   let manifestRaw: string;
   let manifestFd: number | undefined;
   let manifest: unknown;
+  if (verbose) {
+    writeBuildProgress(`reading manifest at ${manifestPath}`);
+  }
   try {
     manifestFd = fs.openSync(manifestPath, "r");
     const manifestStat = fs.fstatSync(manifestFd);
@@ -130,6 +137,10 @@ export function readManifest(pluginDir: string): ManifestInfo {
   const entryValue = openvcs.entry;
   const entry = typeof entryValue === "string" ? entryValue.trim() : undefined;
 
+  if (verbose) {
+    writeBuildProgress(`manifest loaded for ${pluginId}${moduleExec ? ` (module.exec: ${moduleExec})` : ""}`);
+  }
+
   return {
     pluginId,
     moduleExec,
@@ -139,12 +150,19 @@ export function readManifest(pluginDir: string): ManifestInfo {
 }
 
 /** Verifies that a declared module entry resolves to a real file under `bin/`. */
-export function validateDeclaredModuleExec(pluginDir: string, moduleExec: string | undefined): void {
+export function validateDeclaredModuleExec(
+  pluginDir: string,
+  moduleExec: string | undefined,
+  verbose = false,
+): void {
   if (!moduleExec) {
     return;
   }
 
   const targetPath = resolveDeclaredModuleExecPath(pluginDir, moduleExec);
+  if (verbose) {
+    writeBuildProgress(`checking declared bootstrap at ${targetPath}`);
+  }
   if (!fs.existsSync(targetPath) || !fs.lstatSync(targetPath).isFile()) {
     throw new Error(`module entrypoint not found at ${targetPath}`);
   }
@@ -179,11 +197,15 @@ export function authoredPluginModulePath(pluginDir: string): string {
 export function validateGeneratedBootstrapTargets(
   pluginDir: string,
   moduleExec: string | undefined,
+  verbose = false,
 ): void {
   if (!moduleExec) {
     return;
   }
 
+  if (verbose) {
+    writeBuildProgress(`validating generated bootstrap target for ${moduleExec}`);
+  }
   resolveDeclaredModuleExecPath(pluginDir, moduleExec);
   const normalizedExec = moduleExec.trim().toLowerCase();
   if (normalizedExec === AUTHORED_PLUGIN_MODULE_BASENAME.toLowerCase()) {
@@ -230,17 +252,27 @@ export function renderGeneratedBootstrap(
 }
 
 /** Writes the generated SDK-owned module entrypoint under `bin/<module.exec>`. */
-export function generateModuleBootstrap(pluginDir: string, moduleExec: string | undefined): void {
+export function generateModuleBootstrap(
+  pluginDir: string,
+  moduleExec: string | undefined,
+  verbose = false,
+): void {
   if (!moduleExec) {
-    console.debug(`generateModuleBootstrap: no module.exec defined, skipping bootstrap generation for ${pluginDir}`);
+    if (verbose) {
+      writeBuildProgress(`no module.exec defined for ${pluginDir}; skipping bootstrap generation`);
+    }
     return;
   }
 
-  validateGeneratedBootstrapTargets(pluginDir, moduleExec);
+  validateGeneratedBootstrapTargets(pluginDir, moduleExec, verbose);
   const execPath = resolveDeclaredModuleExecPath(pluginDir, moduleExec);
   const pluginModulePath = authoredPluginModulePath(pluginDir);
   const pluginModuleImportPath = relativeBinImport(execPath, pluginModulePath);
   const isEsm = detectEsmMode(pluginDir, moduleExec);
+
+  if (verbose) {
+    writeBuildProgress(`writing bootstrap ${execPath} -> ${pluginModuleImportPath}${isEsm ? " (esm)" : " (cjs)"}`);
+  }
 
   fs.mkdirSync(path.dirname(execPath), { recursive: true });
   fs.writeFileSync(execPath, renderGeneratedBootstrap(pluginModuleImportPath, isEsm), "utf8");
@@ -313,11 +345,14 @@ function readPackageScripts(pluginDir: string): PackageScripts {
 
 /** Builds a plugin's runtime assets when it declares a code module. */
 export function buildPluginAssets(parsedArgs: BuildArgs): ManifestInfo {
-  const manifest = readManifest(parsedArgs.pluginDir);
+  writeBuildProgress(`reading plugin manifest in ${parsedArgs.pluginDir}`);
+  const manifest = readManifest(parsedArgs.pluginDir, parsedArgs.verbose);
   if (!manifest.moduleExec) {
+    writeBuildProgress(`theme-only plugin ${manifest.pluginId}; nothing to build`);
     return manifest;
   }
 
+  writeBuildProgress(`building plugin ${manifest.pluginId}`);
   if (!hasPackageJson(parsedArgs.pluginDir)) {
     throw new Error(`code plugins must include package.json: ${path.join(parsedArgs.pluginDir, "package.json")}`);
   }
@@ -330,8 +365,12 @@ export function buildPluginAssets(parsedArgs: BuildArgs): ManifestInfo {
     );
   }
 
+  writeBuildProgress(`running build:plugin`);
   runCommand(npmExecutable(), [...npmArgsPrefix(), "run", "build:plugin"], parsedArgs.pluginDir, parsedArgs.verbose);
-  generateModuleBootstrap(parsedArgs.pluginDir, manifest.moduleExec);
-  validateDeclaredModuleExec(parsedArgs.pluginDir, manifest.moduleExec);
+  writeBuildProgress(`generating bootstrap ${manifest.moduleExec}`);
+  generateModuleBootstrap(parsedArgs.pluginDir, manifest.moduleExec, parsedArgs.verbose);
+  writeBuildProgress(`validating bootstrap ${manifest.moduleExec}`);
+  validateDeclaredModuleExec(parsedArgs.pluginDir, manifest.moduleExec, parsedArgs.verbose);
+  writeBuildProgress(`build complete for ${manifest.pluginId}`);
   return manifest;
 }
