@@ -274,8 +274,6 @@ export interface VcsConflictDetails {
   theirs: string | null;
   /** Indicates whether the conflict is binary. */
   binary: boolean;
-  /** Indicates whether the conflict references Git LFS content. */
-  lfs_pointer: boolean;
 }
 
 /** Describes params for checking out one side of a conflict. */
