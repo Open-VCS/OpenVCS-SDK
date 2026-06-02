@@ -259,7 +259,7 @@ export abstract class VcsDelegateBase<
   diffFile(
     _params: VcsTypes.VcsDiffFileParams,
     _context: TContext,
-  ): VcsHandlerResult<string[]> {
+  ): VcsHandlerResult<VcsTypes.VcsDiffFileResponse> {
     return this.unimplemented('diffFile');
   }
 

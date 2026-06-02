@@ -180,6 +180,8 @@ export interface StatusFileEntry {
   resolved_conflict: boolean;
   /** Stores placeholder hunk information until richer diff support exists. */
   hunks: never[];
+  /** Indicates whether the file content should be treated as binary. */
+  binary?: boolean | null;
 }
 
 /** Describes the structured status payload returned to the host. */
@@ -255,6 +257,17 @@ export interface VcsDiffCommitParams extends VcsSessionParams {
   /** Stores the revision to diff. */
   rev: string;
 }
+
+/** Describes one structured diff payload returned for a file. */
+export interface VcsDiffResult {
+  /** Stores line-oriented diff output. */
+  lines: string[];
+  /** Indicates whether the diff target should be treated as binary. */
+  binary?: boolean | null;
+}
+
+/** Describes the accepted `vcs.diff_file` response shapes. */
+export type VcsDiffFileResponse = VcsDiffResult | string[];
 
 /** Describes params for `vcs.get_conflict_details`. */
 export interface VcsGetConflictDetailsParams extends VcsSessionParams {
@@ -501,7 +514,7 @@ export interface VcsDelegates<TContext = unknown> {
     TContext
   >;
   /** Handles `vcs.diff_file`. */
-  'vcs.diff_file'?: RpcMethodHandler<VcsDiffFileParams, string[], TContext>;
+  'vcs.diff_file'?: RpcMethodHandler<VcsDiffFileParams, VcsDiffFileResponse, TContext>;
   /** Handles `vcs.diff_commit`. */
   'vcs.diff_commit'?: RpcMethodHandler<VcsDiffCommitParams, string[], TContext>;
   /** Handles `vcs.get_conflict_details`. */

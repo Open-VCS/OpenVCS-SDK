@@ -53,6 +53,34 @@ class DerivedBranchDelegates extends SharedBranchDelegates {
   }
 }
 
+class BinaryAwareDelegates extends VcsDelegateBase {
+  getStatusPayload() {
+    return {
+      files: [
+        {
+          path: 'img.png',
+          old_path: null,
+          status: 'M',
+          staged: false,
+          resolved_conflict: false,
+          hunks: [],
+          binary: true,
+        },
+      ],
+      ahead: 0,
+      behind: 0,
+      branch_on_remote: false,
+    };
+  }
+
+  diffFile() {
+    return {
+      lines: ['Binary files a/img.png and b/img.png differ'],
+      binary: true,
+    };
+  }
+}
+
 test('VcsDelegateBase maps overridden camelCase methods to rpc delegates', async () => {
   const delegate = new ExampleVcsDelegates({ prefix: 'commit', calls: [] });
   const delegates = delegate.toDelegates();
@@ -107,6 +135,44 @@ test('VcsDelegateBase keeps inherited overrides when building delegates', async 
       { host: {}, method: 'vcs.list_branches', requestId: 9 },
     ),
     [],
+  );
+});
+
+test('VcsDelegateBase preserves binary metadata in status and diff payloads', async () => {
+  const delegates = new BinaryAwareDelegates({}).toDelegates();
+
+  assert.deepEqual(
+    await delegates['vcs.get_status_payload'](
+      { session_id: 'session-4' },
+      { host: {}, method: 'vcs.get_status_payload', requestId: 11 },
+    ),
+    {
+      files: [
+        {
+          path: 'img.png',
+          old_path: null,
+          status: 'M',
+          staged: false,
+          resolved_conflict: false,
+          hunks: [],
+          binary: true,
+        },
+      ],
+      ahead: 0,
+      behind: 0,
+      branch_on_remote: false,
+    },
+  );
+
+  assert.deepEqual(
+    await delegates['vcs.diff_file'](
+      { session_id: 'session-4', path: 'img.png' },
+      { host: {}, method: 'vcs.diff_file', requestId: 12 },
+    ),
+    {
+      lines: ['Binary files a/img.png and b/img.png differ'],
+      binary: true,
+    },
   );
 });
 
