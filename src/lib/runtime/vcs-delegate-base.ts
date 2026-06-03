@@ -303,6 +303,14 @@ export abstract class VcsDelegateBase<
     return this.unimplemented('stagePatch');
   }
 
+  /** Handles `vcs.stage_selections` (structured hunk/line selections). */
+  stageSelections(
+    _params: VcsTypes.VcsStageSelectionsParams,
+    _context: TContext,
+  ): VcsHandlerResult<null> {
+    return this.unimplemented('stageSelections');
+  }
+
   /** Handles `vcs.stage_paths`. */
   stagePaths(
     _params: VcsTypes.VcsStagePathsParams,

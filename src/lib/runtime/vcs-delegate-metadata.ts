@@ -53,6 +53,7 @@ export type VcsDelegateBindings<TContext> = {
     VcsTypes.VcsDelegates<TContext>['vcs.write_merge_result']
   >;
   stagePatch: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.stage_patch']>;
+  stageSelections: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.stage_selections']>;
   stagePaths: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.stage_paths']>;
   discardPaths: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.discard_paths']>;
   applyReversePatch: NonNullable<
@@ -123,6 +124,7 @@ export const VCS_DELEGATE_METHOD_MAPPINGS = {
   checkoutConflictSide: 'vcs.checkout_conflict_side',
   writeMergeResult: 'vcs.write_merge_result',
   stagePatch: 'vcs.stage_patch',
+  stageSelections: 'vcs.stage_selections',
   stagePaths: 'vcs.stage_paths',
   discardPaths: 'vcs.discard_paths',
   applyReversePatch: 'vcs.apply_reverse_patch',

@@ -311,6 +311,22 @@ export interface VcsStagePatchParams extends VcsSessionParams {
   patch: string;
 }
 
+/** Describes a single file's hunk/line selection for partial staging. */
+export interface HunkSelection {
+  /** Repository-relative file path. */
+  path: string;
+  /** Indices of whole hunks to include. */
+  whole_hunks: number[];
+  /** Per-hunk line selections: maps hunk index → 1-based line offsets. */
+  partial_hunks: Record<number, number[]>;
+}
+
+/** Describes params for staging structured selections (VCS-agnostic). */
+export interface VcsStageSelectionsParams extends VcsSessionParams {
+  /** Structured hunk/line selections for multiple files. */
+  selections: HunkSelection[];
+}
+
 /** Describes params for staging repository-relative paths into the index. */
 export interface VcsStagePathsParams extends VcsSessionParams {
   /** Stores the paths to stage. */
@@ -537,6 +553,8 @@ export interface VcsDelegates<TContext = unknown> {
   >;
   /** Handles `vcs.stage_patch`. */
   'vcs.stage_patch'?: RpcMethodHandler<VcsStagePatchParams, null, TContext>;
+  /** Handles `vcs.stage_selections` (structured hunk/line selections). */
+  'vcs.stage_selections'?: RpcMethodHandler<VcsStageSelectionsParams, null, TContext>;
   /** Handles `vcs.stage_paths`. */
   'vcs.stage_paths'?: RpcMethodHandler<VcsStagePathsParams, null, TContext>;
   /** Handles `vcs.discard_paths`. */
