@@ -17,6 +17,8 @@ export interface VcsCapabilities {
   push_pull: boolean;
   /** Indicates whether fast-forward helpers are supported. */
   fast_forward: boolean;
+  /** Indicates whether merge strategy selection (merge/squash/rebase) is supported. */
+  merge_strategies?: boolean;
 }
 
 /** Describes params that carry a repository session id. */
@@ -361,12 +363,17 @@ export interface VcsRenameBranchParams extends VcsSessionParams {
   new: string;
 }
 
+/** Describes the supported merge strategies. */
+export type VcsMergeStrategy = 'merge' | 'squash' | 'rebase';
+
 /** Describes params for merging another branch into the current branch. */
 export interface VcsMergeIntoCurrentParams extends VcsSessionParams {
   /** Stores the branch name to merge. */
   name: string;
   /** Stores an optional merge commit message. */
   message?: string;
+  /** Stores the merge strategy. Defaults to 'merge' when absent. */
+  strategy?: VcsMergeStrategy;
 }
 
 /** Describes params for setting a branch upstream. */
