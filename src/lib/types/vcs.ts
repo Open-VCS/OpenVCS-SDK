@@ -17,8 +17,8 @@ export interface VcsCapabilities {
   push_pull: boolean;
   /** Indicates whether fast-forward helpers are supported. */
   fast_forward: boolean;
-  /** Indicates whether merge strategy selection (merge/squash/rebase) is supported. */
-  merge_strategies?: boolean;
+  /** Merge strategies the backend supports (values like "merge", "squash", "rebase"). */
+  merge_strategies?: string[];
 }
 
 /** Describes params that carry a repository session id. */
