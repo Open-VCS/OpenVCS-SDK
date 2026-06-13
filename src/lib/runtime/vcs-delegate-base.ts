@@ -259,7 +259,7 @@ export abstract class VcsDelegateBase<
   diffFile(
     _params: VcsTypes.VcsDiffFileParams,
     _context: TContext,
-  ): VcsHandlerResult<string[]> {
+  ): VcsHandlerResult<VcsTypes.VcsDiffFileResponse> {
     return this.unimplemented('diffFile');
   }
 
@@ -301,6 +301,14 @@ export abstract class VcsDelegateBase<
     _context: TContext,
   ): VcsHandlerResult<null> {
     return this.unimplemented('stagePatch');
+  }
+
+  /** Handles `vcs.stage_selections` (structured hunk/line selections). */
+  stageSelections(
+    _params: VcsTypes.VcsStageSelectionsParams,
+    _context: TContext,
+  ): VcsHandlerResult<null> {
+    return this.unimplemented('stageSelections');
   }
 
   /** Handles `vcs.stage_paths`. */

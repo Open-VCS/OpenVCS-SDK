@@ -17,6 +17,8 @@ export interface VcsCapabilities {
   push_pull: boolean;
   /** Indicates whether fast-forward helpers are supported. */
   fast_forward: boolean;
+  /** Merge strategies the backend supports (values like "merge", "squash", "rebase"). */
+  merge_strategies?: string[];
 }
 
 /** Describes params that carry a repository session id. */
@@ -110,20 +112,13 @@ export interface VcsRemoveRemoteParams extends VcsSessionParams {
   name: string;
 }
 
-/** Describes optional fetch flags. */
-export interface VcsFetchOptions {
-  /** Indicates whether stale remote references should be pruned. */
-  prune?: boolean;
-}
-
 /** Describes params for fetch methods. */
+
 export interface VcsFetchParams extends VcsSessionParams {
   /** Stores the remote to fetch when one is supplied. */
   remote?: string;
   /** Stores the refspec to fetch when one is supplied. */
   refspec?: string;
-  /** Stores optional fetch flags. */
-  opts?: VcsFetchOptions;
 }
 
 /** Describes params for push. */
@@ -180,6 +175,8 @@ export interface StatusFileEntry {
   resolved_conflict: boolean;
   /** Stores placeholder hunk information until richer diff support exists. */
   hunks: never[];
+  /** Indicates whether the file content should be treated as binary. */
+  binary?: boolean | null;
 }
 
 /** Describes the structured status payload returned to the host. */
@@ -256,6 +253,17 @@ export interface VcsDiffCommitParams extends VcsSessionParams {
   rev: string;
 }
 
+/** Describes one structured diff payload returned for a file. */
+export interface VcsDiffResult {
+  /** Stores line-oriented diff output. */
+  lines: string[];
+  /** Indicates whether the diff target should be treated as binary. */
+  binary?: boolean | null;
+}
+
+/** Describes the accepted `vcs.diff_file` response shapes. */
+export type VcsDiffFileResponse = VcsDiffResult | string[];
+
 /** Describes params for `vcs.get_conflict_details`. */
 export interface VcsGetConflictDetailsParams extends VcsSessionParams {
   /** Stores the conflicted path. */
@@ -274,8 +282,6 @@ export interface VcsConflictDetails {
   theirs: string | null;
   /** Indicates whether the conflict is binary. */
   binary: boolean;
-  /** Indicates whether the conflict references Git LFS content. */
-  lfs_pointer: boolean;
 }
 
 /** Describes params for checking out one side of a conflict. */
@@ -298,6 +304,22 @@ export interface VcsWriteMergeResultParams extends VcsSessionParams {
 export interface VcsStagePatchParams extends VcsSessionParams {
   /** Stores the textual patch content. */
   patch: string;
+}
+
+/** Describes a single file's hunk/line selection for partial staging. */
+export interface HunkSelection {
+  /** Repository-relative file path. */
+  path: string;
+  /** Indices of whole hunks to include. */
+  whole_hunks: number[];
+  /** Per-hunk line selections: maps hunk index → 1-based line offsets. */
+  partial_hunks: Record<number, number[]>;
+}
+
+/** Describes params for staging structured selections (VCS-agnostic). */
+export interface VcsStageSelectionsParams extends VcsSessionParams {
+  /** Structured hunk/line selections for multiple files. */
+  selections: HunkSelection[];
 }
 
 /** Describes params for staging repository-relative paths into the index. */
@@ -334,12 +356,17 @@ export interface VcsRenameBranchParams extends VcsSessionParams {
   new: string;
 }
 
+/** Describes the supported merge strategies. */
+export type VcsMergeStrategy = 'merge' | 'squash' | 'rebase';
+
 /** Describes params for merging another branch into the current branch. */
 export interface VcsMergeIntoCurrentParams extends VcsSessionParams {
   /** Stores the branch name to merge. */
   name: string;
   /** Stores an optional merge commit message. */
   message?: string;
+  /** Stores the merge strategy. Defaults to 'merge' when absent. */
+  strategy?: VcsMergeStrategy;
 }
 
 /** Describes params for setting a branch upstream. */
@@ -503,7 +530,7 @@ export interface VcsDelegates<TContext = unknown> {
     TContext
   >;
   /** Handles `vcs.diff_file`. */
-  'vcs.diff_file'?: RpcMethodHandler<VcsDiffFileParams, string[], TContext>;
+  'vcs.diff_file'?: RpcMethodHandler<VcsDiffFileParams, VcsDiffFileResponse, TContext>;
   /** Handles `vcs.diff_commit`. */
   'vcs.diff_commit'?: RpcMethodHandler<VcsDiffCommitParams, string[], TContext>;
   /** Handles `vcs.get_conflict_details`. */
@@ -526,6 +553,8 @@ export interface VcsDelegates<TContext = unknown> {
   >;
   /** Handles `vcs.stage_patch`. */
   'vcs.stage_patch'?: RpcMethodHandler<VcsStagePatchParams, null, TContext>;
+  /** Handles `vcs.stage_selections` (structured hunk/line selections). */
+  'vcs.stage_selections'?: RpcMethodHandler<VcsStageSelectionsParams, null, TContext>;
   /** Handles `vcs.stage_paths`. */
   'vcs.stage_paths'?: RpcMethodHandler<VcsStagePathsParams, null, TContext>;
   /** Handles `vcs.discard_paths`. */

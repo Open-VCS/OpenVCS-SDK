@@ -16,6 +16,20 @@ const {
 } = require("../lib/build");
 const { cleanupTempDir, makeTempDir, writeJson, writeText } = require("./helpers");
 
+function captureStderr(fn) {
+  const chunks = [];
+  const originalWrite = process.stderr.write;
+  process.stderr.write = (chunk) => {
+    chunks.push(String(chunk));
+    return true;
+  };
+  try {
+    return { result: fn(), stderr: chunks.join("") };
+  } finally {
+    process.stderr.write = originalWrite;
+  }
+}
+
 test("renderGeneratedBootstrap creates ESM code", () => {
   const output = require("../lib/build").renderGeneratedBootstrap("./plugin.js", true);
   assert.match(output, /^#!/);
@@ -64,9 +78,11 @@ test("buildPluginAssets no-ops for theme-only plugins", () => {
     name: "theme-only",
     openvcs: { id: "theme-only" },
   });
-  const manifest = buildPluginAssets({ pluginDir, verbose: false });
+  const { result: manifest, stderr } = captureStderr(() => buildPluginAssets({ pluginDir, verbose: false }));
 
   assert.equal(manifest.pluginId, "theme-only");
+  assert.match(stderr, /openvcs build: reading plugin manifest/);
+  assert.match(stderr, /openvcs build: theme-only plugin theme-only; nothing to build/);
   cleanupTempDir(root);
 });
 
@@ -110,7 +126,7 @@ test("buildPluginAssets runs build:plugin and validates output", () => {
     "const fs = require('node:fs');\nconst path = require('node:path');\nconst out = path.join(process.cwd(), 'bin', 'plugin.js');\nfs.mkdirSync(path.dirname(out), { recursive: true });\nfs.writeFileSync(out, 'export {};\\n', 'utf8');\n"
   );
 
-  const manifest = buildPluginAssets({ pluginDir, verbose: false });
+  const { result: manifest, stderr } = captureStderr(() => buildPluginAssets({ pluginDir, verbose: false }));
 
   assert.equal(manifest.pluginId, "builder");
   assert.equal(fs.existsSync(path.join(pluginDir, "bin", "plugin.js")), true);
@@ -119,6 +135,42 @@ test("buildPluginAssets runs build:plugin and validates output", () => {
     fs.readFileSync(path.join(pluginDir, "bin", "openvcs-plugin.js"), "utf8"),
     /bootstrapPluginModule/
   );
+  assert.match(stderr, /openvcs build: reading plugin manifest/);
+  assert.match(stderr, /openvcs build: running build:plugin/);
+  assert.match(stderr, /openvcs build: generating bootstrap openvcs-plugin.js/);
+  assert.match(stderr, /openvcs build: validating bootstrap openvcs-plugin.js/);
+  assert.match(stderr, /openvcs build: build complete for builder/);
+  cleanupTempDir(root);
+});
+
+test("buildPluginAssets verbose mode adds detailed progress output", () => {
+  const root = makeTempDir("openvcs-sdk-test");
+  const pluginDir = path.join(root, "plugin");
+
+  writeJson(path.join(pluginDir, "package.json"), {
+    name: "verbose-builder",
+    private: true,
+    type: "module",
+    openvcs: {
+      id: "verbose-builder",
+      module: { exec: "openvcs-plugin.mjs" },
+    },
+    scripts: {
+      "build:plugin": "node ./scripts/build-plugin.cjs",
+    },
+  });
+  writeText(
+    path.join(pluginDir, "scripts", "build-plugin.cjs"),
+    "const fs = require('node:fs');\nconst path = require('node:path');\nconst out = path.join(process.cwd(), 'bin', 'plugin.js');\nfs.mkdirSync(path.dirname(out), { recursive: true });\nfs.writeFileSync(out, 'export {};\\n', 'utf8');\n"
+  );
+
+  const { result: manifest, stderr } = captureStderr(() => buildPluginAssets({ pluginDir, verbose: true }));
+
+  assert.equal(manifest.pluginId, "verbose-builder");
+  assert.match(stderr, /openvcs build: reading manifest at .*package\.json/);
+  assert.match(stderr, /openvcs build: manifest loaded for verbose-builder \(module\.exec: openvcs-plugin\.mjs\)/);
+  assert.match(stderr, /Running command in .*: .* run build:plugin/);
+  assert.match(stderr, /openvcs build: writing bootstrap .*openvcs-plugin\.mjs -> .*plugin\.js \(esm\)/);
   cleanupTempDir(root);
 });
 
