@@ -112,20 +112,13 @@ export interface VcsRemoveRemoteParams extends VcsSessionParams {
   name: string;
 }
 
-/** Describes optional fetch flags. */
-export interface VcsFetchOptions {
-  /** Indicates whether stale remote references should be pruned. */
-  prune?: boolean;
-}
-
 /** Describes params for fetch methods. */
+
 export interface VcsFetchParams extends VcsSessionParams {
   /** Stores the remote to fetch when one is supplied. */
   remote?: string;
   /** Stores the refspec to fetch when one is supplied. */
   refspec?: string;
-  /** Stores optional fetch flags. */
-  opts?: VcsFetchOptions;
 }
 
 /** Describes params for push. */
