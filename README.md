@@ -174,6 +174,9 @@ compiled plugin author module at `bin/plugin.js`, and then generates the SDK-own
 `bin/<module.exec>` bootstrap that imports `./plugin.js`, applies `PluginDefinition`,
 invokes `OnPluginStart()`, and starts the runtime.
 
+The build prints progress messages to stderr so you can see each phase. Pass `-V`
+or `--verbose` to also echo the exact command and validation details.
+
 Theme-only plugins can also run `npm run build`; the command exits successfully
 without producing `bin/` output.
 
@@ -208,18 +211,18 @@ Dependency behavior:
 
 ## CLI usage
 
-Build a plugin manually:
+Build plugin assets from a plugin project:
 
 ```bash
-npx openvcs build --plugin-dir /path/to/plugin
+npm run build
 ```
 
-Show command help:
+Show command help through npm script:
 
 ```bash
-npx openvcs --help
-npx openvcs build --help
-npx openvcs init --help
+npm run openvcs -- --help
+npm run openvcs -- build --help
+npm run openvcs -- init --help
 ```
 
 ## Publishing Note

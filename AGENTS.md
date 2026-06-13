@@ -23,7 +23,7 @@
 - `npm run build` (compile TypeScript sources to `bin/` and `lib/`).
 - `npm test` (compile then run Node tests via `node --test`).
 - `npm run openvcs -- <args>` (run the local CLI with a prebuild step).
-- `openvcs build --plugin-dir /path/to/plugin` to build plugin runtime assets.
+- `npm run build` inside a plugin project builds runtime assets via `openvcs build`.
 - `openvcs init [--theme] [dir]` to scaffold plugin projects.
 - Install path for users is npm: `npm install --save-dev @openvcs/sdk`.
 - CI release channels publish npm prereleases on `Beta` (`beta`), `Dev` push commits (`edge`), and scheduled `Dev` nightlies (`nightly`).
