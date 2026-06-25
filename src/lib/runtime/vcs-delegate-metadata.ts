@@ -89,6 +89,8 @@ export type VcsDelegateBindings<TContext> = {
   stashShow: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.stash_show']>;
   cherryPick: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.cherry_pick']>;
   revertCommit: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.revert_commit']>;
+  validateUrl: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.validate_url']>;
+  validatePath: NonNullable<VcsTypes.VcsDelegates<TContext>['vcs.validate_path']>;
 };
 
 /** Enumerates the class-friendly method names recognized by `VcsDelegateBase`. */
@@ -148,6 +150,8 @@ export const VCS_DELEGATE_METHOD_MAPPINGS = {
   stashShow: 'vcs.stash_show',
   cherryPick: 'vcs.cherry_pick',
   revertCommit: 'vcs.revert_commit',
+  validateUrl: 'vcs.validate_url',
+  validatePath: 'vcs.validate_path',
 } as const satisfies Record<
   VcsDelegateMethodName,
   keyof VcsTypes.VcsDelegates<PluginRuntimeContext>

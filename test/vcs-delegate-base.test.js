@@ -254,3 +254,30 @@ test('all VcsDelegateBase stubs throw method-specific errors', () => {
     );
   }
 });
+
+test('VcsDelegateBase maps validateUrl and validatePath to rpc delegates', () => {
+  class ValidationDelegates extends VcsDelegateBase {
+    validateUrl(params) {
+      return { ok: params.url.includes('.git') };
+    }
+
+    validatePath(params) {
+      return { ok: params.path.endsWith('.git') };
+    }
+  }
+
+  const delegates = new ValidationDelegates({}).toDelegates();
+  assert.deepEqual(Object.keys(delegates).sort(), ['vcs.validate_path', 'vcs.validate_url']);
+
+  const urlResult = delegates['vcs.validate_url']({ url: 'https://example.com/repo.git' }, {});
+  assert.strictEqual(urlResult.ok, true);
+
+  const urlResultFail = delegates['vcs.validate_url']({ url: 'https://example.com/repo' }, {});
+  assert.strictEqual(urlResultFail.ok, false);
+
+  const pathResult = delegates['vcs.validate_path']({ path: '/repo/.git' }, {});
+  assert.strictEqual(pathResult.ok, true);
+
+  const pathResultFail = delegates['vcs.validate_path']({ path: '/repo' }, {});
+  assert.strictEqual(pathResultFail.ok, false);
+});

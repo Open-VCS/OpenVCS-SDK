@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { RequestParams, VcsCapabilities } from '../src/lib/types';
+import type { RequestParams, VcsCapabilities, VcsValidationResult } from '../src/lib/types';
 
 import {
   VcsDelegateBase,
@@ -42,3 +42,12 @@ class InvalidVcsDelegates extends VcsDelegateBase<{}> {
 }
 
 new InvalidVcsDelegates({});
+
+class InvalidValidateOverride extends VcsDelegateBase<{}> {
+  // @ts-expect-error `validateUrl` must return `VcsValidationResult`.
+  override validateUrl(): string {
+    return 'invalid';
+  }
+}
+
+new InvalidValidateOverride({});

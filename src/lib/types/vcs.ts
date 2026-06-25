@@ -455,6 +455,26 @@ export interface VcsRevertCommitParams extends VcsSessionParams {
   no_edit?: boolean;
 }
 
+/** Describes the result returned by URL or path validation. */
+export interface VcsValidationResult {
+  /** Indicates whether the URL or path is valid for this backend. */
+  ok: boolean;
+  /** Stores an optional human-readable reason when validation fails. */
+  reason?: string;
+}
+
+/** Describes params for `vcs.validate_url`. */
+export interface VcsValidateUrlParams extends RequestParams {
+  /** Stores the repository URL to validate. */
+  url: string;
+}
+
+/** Describes params for `vcs.validate_path`. */
+export interface VcsValidatePathParams extends RequestParams {
+  /** Stores the local path to validate. */
+  path: string;
+}
+
 /** Describes the delegate map supported by the SDK runtime for `vcs.*`. */
 export interface VcsDelegates<TContext = unknown> {
   /** Handles `vcs.get_caps`. */
@@ -629,4 +649,8 @@ export interface VcsDelegates<TContext = unknown> {
   'vcs.cherry_pick'?: RpcMethodHandler<VcsCherryPickParams, null, TContext>;
   /** Handles `vcs.revert_commit`. */
   'vcs.revert_commit'?: RpcMethodHandler<VcsRevertCommitParams, null, TContext>;
+  /** Handles `vcs.validate_url`. */
+  'vcs.validate_url'?: RpcMethodHandler<VcsValidateUrlParams, VcsValidationResult, TContext>;
+  /** Handles `vcs.validate_path`. */
+  'vcs.validate_path'?: RpcMethodHandler<VcsValidatePathParams, VcsValidationResult, TContext>;
 }
