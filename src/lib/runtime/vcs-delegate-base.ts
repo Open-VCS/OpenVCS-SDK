@@ -494,4 +494,20 @@ export abstract class VcsDelegateBase<
   ): VcsHandlerResult<null> {
     return this.unimplemented('revertCommit');
   }
+
+  /** Handles `vcs.validate_url`. */
+  validateUrl(
+    _params: VcsTypes.VcsValidateUrlParams,
+    _context: TContext,
+  ): VcsHandlerResult<VcsTypes.VcsValidationResult> {
+    return this.unimplemented('validateUrl');
+  }
+
+  /** Handles `vcs.validate_path`. */
+  validatePath(
+    _params: VcsTypes.VcsValidatePathParams,
+    _context: TContext,
+  ): VcsHandlerResult<VcsTypes.VcsValidationResult> {
+    return this.unimplemented('validatePath');
+  }
 }
